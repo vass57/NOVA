@@ -6,75 +6,37 @@
 # CURRENT STATUS
 #
 # STEP 1
-#
-#   ✅ Locate files
-#   ✅ Verify files exist
-#   ✅ Load Excel workbooks
+#   ✅ Load files
+#   ✅ Validate files
 #   ✅ Repair malformed job-details workbook
 #
-#
 # STEP 2
-#
-#   ✅ Extract useful worksheets
 #   ✅ Preserve raw data
-#   ✅ Normalize System A
-#   ✅ Normalize System B
-#   ✅ Normalize job details
-#   ✅ Normalize employment reasons
-#
+#   ✅ Normalize all datasets
 #
 # STEP 3
-#
-#   ✅ Parse Mapping.xlsx
-#   ✅ Classify direct vs rule-based mappings
-#   ✅ Parse supporting rule sheets
+#   ✅ Parse mapping
+#   ✅ Classify direct / rule-based mappings
+#   ✅ Parse supporting rule tables
 #   ✅ Validate direct mappings
-#
+#   ✅ Print detailed rule instructions
 #
 # STEP 4
-#
-#   ✅ Match employees using Matricule <-> personId
-#   ✅ Detect employees present in only one system
-#   ✅ Count rows belonging to each employee
-#   ✅ Identify employees requiring assignment matching
-#
+#   ✅ Match employees
 #
 # STEP 5
-#
-#   ✅ Interpret assignment type P / A / S
 #   ✅ Match assignments conservatively
-#   ✅ Detect source-only assignments
-#   ✅ Detect destination-only assignments
-#   ✅ Preserve ambiguous assignment groups
 #
+# STEP 6
+#   ✅ Compare direct mapped fields
+#   ✅ Detect exact / normalized / discrepant values
 #
-# NOT IMPLEMENTED YET
-#
-#   ⬜ Direct field corroboration
-#   ⬜ Business-rule execution
-#   ⬜ Final comparison DataFrame
-#   ⬜ AI analysis
-#   ⬜ Final report
-#
-#
-# IMPORTANT ARCHITECTURE RULES
-#
-#   1. Original Excel files remain read-only.
-#
-#   2. Raw values are preserved for traceability.
-#
-#   3. Normalization changes representation only.
-#
-#   4. Mapping.xlsx decides which fields are corroborated.
-#
-#   5. Employee matching happens before assignment matching.
-#
-#   6. Assignment matching does NOT use fields that will later
-#      be corroborated to force a match.
-#
-#   7. Ambiguous assignment groups remain ambiguous.
-#
-#   8. Deterministic business rules execute before AI.
+# NEXT
+#   ⬜ Implement deterministic business rules
+#   ⬜ Derive expected values
+#   ⬜ Apply final deterministic verdicts
+#   ⬜ Send ambiguous cases to AI layer
+#   ⬜ Generate final report
 #
 # ============================================================
 
@@ -90,7 +52,7 @@ import pandas as pd
 
 
 # ============================================================
-# NORMALIZATION FUNCTIONS
+# CORROBORIA MODULES
 # ============================================================
 
 from corroboria.normalizer import (
@@ -101,11 +63,6 @@ from corroboria.normalizer import (
     normalize_text,
 )
 
-
-# ============================================================
-# MAPPING PARSER FUNCTIONS
-# ============================================================
-
 from corroboria.mapping_parser import (
     parse_employment_rules,
     parse_join_sheet,
@@ -114,25 +71,20 @@ from corroboria.mapping_parser import (
     validate_direct_mappings,
 )
 
-
-# ============================================================
-# EMPLOYEE MATCHING FUNCTIONS
-# ============================================================
-
 from corroboria.matcher import (
     find_missing_employee_ids,
     match_employees,
     preview_employee_matching,
 )
 
-
-# ============================================================
-# ASSIGNMENT MATCHING FUNCTIONS
-# ============================================================
-
 from corroboria.assignment_matcher import (
     match_assignments,
     preview_assignment_matching,
+)
+
+from corroboria.comparator import (
+    compare_direct_mappings,
+    preview_direct_comparisons,
 )
 
 
@@ -140,11 +92,8 @@ from corroboria.assignment_matcher import (
 # PROJECT PATHS
 # ============================================================
 
-# Folder containing this main.py file.
 BASE_DIR = Path(__file__).resolve().parent
 
-
-# Folder containing challenge input files.
 DATA_DIR = BASE_DIR / "data"
 
 
@@ -154,41 +103,17 @@ DATA_DIR = BASE_DIR / "data"
 
 FILES = {
 
-    # --------------------------------------------------------
-    # SYSTEM A - HR
-    # --------------------------------------------------------
-
     "source":
         DATA_DIR / "Employe_Source_Anonymise_VF.xlsx",
-
-
-    # --------------------------------------------------------
-    # SYSTEM B - TIME
-    # --------------------------------------------------------
 
     "destination":
         DATA_DIR / "Employe_Destination_Anonymise_VF.xlsx",
 
-
-    # --------------------------------------------------------
-    # MAPPING + BUSINESS RULES
-    # --------------------------------------------------------
-
     "mapping":
         DATA_DIR / "Mapping.xlsx",
 
-
-    # --------------------------------------------------------
-    # JOB / POSITION HISTORY
-    # --------------------------------------------------------
-
     "job_details":
         DATA_DIR / "détail_du_poste.xlsx",
-
-
-    # --------------------------------------------------------
-    # EMPLOYMENT REASONS
-    # --------------------------------------------------------
 
     "employment_reasons":
         DATA_DIR / "Motif de la situation d'emploi.xlsx",
@@ -202,13 +127,10 @@ FILES = {
 
 def check_files_exist() -> None:
     """
-    Ensure that every required input file exists.
-
-    This function does not modify any file.
+    Ensure that every required file exists.
     """
 
     missing_files = []
-
 
     for name, path in FILES.items():
 
@@ -217,7 +139,6 @@ def check_files_exist() -> None:
             missing_files.append(
                 f"{name}: {path}"
             )
-
 
     if missing_files:
 
@@ -236,21 +157,13 @@ def load_excel_file(
     path: Path
 ) -> dict[str, pd.DataFrame]:
     """
-    Load every worksheet from one Excel workbook.
-
-    sheet_name=None means all worksheets are loaded.
-
-    Nothing is written back to the original file.
+    Load every worksheet from an Excel workbook.
     """
 
     return pd.read_excel(
-
         path,
-
         sheet_name=None,
-
         dtype=object,
-
         engine="openpyxl",
     )
 
@@ -264,45 +177,25 @@ def fix_comma_separated_sheet(
     df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Repair an Excel worksheet containing comma-separated
-    information inside one column.
-
-    This occurs in:
-
-        détail_du_poste.xlsx
+    Repair job-detail workbook if all CSV data was placed
+    inside one Excel column.
     """
-
-    # --------------------------------------------------------
-    # Already contains several columns.
-    # Nothing needs repairing.
-    # --------------------------------------------------------
 
     if len(df.columns) != 1:
 
         return df
 
 
-    # Get the only column name.
     column_name = str(
         df.columns[0]
     )
 
-
-    # --------------------------------------------------------
-    # If there is no comma, this may be a legitimate
-    # one-column sheet.
-    # --------------------------------------------------------
 
     if "," not in column_name:
 
         return df
 
 
-    # --------------------------------------------------------
-    # RECONSTRUCT CSV TEXT
-    # --------------------------------------------------------
-
-    # The Excel column header is actually the real CSV header.
     rows = [
         column_name
     ]
@@ -321,22 +214,14 @@ def fix_comma_separated_sheet(
             )
 
 
-    # Join all rows with newline characters.
     csv_text = "\n".join(
         rows
     )
 
 
-    # --------------------------------------------------------
-    # PARSE THE RECONSTRUCTED CSV
-    # --------------------------------------------------------
-
     corrected_df = pd.read_csv(
-
         StringIO(csv_text),
-
         sep=",",
-
         dtype=object,
     )
 
@@ -346,12 +231,12 @@ def fix_comma_separated_sheet(
 
 # ============================================================
 # STEP 1D
-# LOAD ALL WORKBOOKS
+# LOAD ALL DATA
 # ============================================================
 
 def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
     """
-    Load every CorroborIA workbook.
+    Load all challenge workbooks.
     """
 
     check_files_exist()
@@ -373,8 +258,7 @@ def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
 
 
         # ----------------------------------------------------
-        # SPECIAL CASE:
-        # Repair malformed job-details workbook.
+        # Special repair for job-detail workbook
         # ----------------------------------------------------
 
         if name == "job_details":
@@ -396,14 +280,14 @@ def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
 
 # ============================================================
 # STEP 1E
-# INSPECT WORKBOOK STRUCTURE
+# INSPECT INPUT FILES
 # ============================================================
 
 def inspect_workbooks(
     workbooks: dict[str, dict[str, pd.DataFrame]]
 ) -> None:
     """
-    Display workbook structure during development.
+    Print workbook structures.
     """
 
     print(
@@ -454,24 +338,17 @@ def inspect_workbooks(
 
 # ============================================================
 # STEP 2A
-# EXTRACT USEFUL DATAFRAMES
+# EXTRACT REQUIRED DATAFRAMES
 # ============================================================
 
 def extract_dataframes(
     workbooks: dict[str, dict[str, pd.DataFrame]]
 ) -> dict[str, pd.DataFrame]:
     """
-    Extract worksheets required by the project.
-
-    .copy() prevents changes to the originally loaded
-    workbook DataFrames.
+    Extract worksheets required by CorroborIA.
     """
 
     return {
-
-        # ----------------------------------------------------
-        # SYSTEM A
-        # ----------------------------------------------------
 
         "source":
             workbooks[
@@ -480,22 +357,12 @@ def extract_dataframes(
                 "Employe_Source"
             ].copy(),
 
-
-        # ----------------------------------------------------
-        # SYSTEM B
-        # ----------------------------------------------------
-
         "destination":
             workbooks[
                 "destination"
             ][
                 "Employe_Destination"
             ].copy(),
-
-
-        # ----------------------------------------------------
-        # MAIN MAPPING
-        # ----------------------------------------------------
 
         "mapping":
             workbooks[
@@ -504,22 +371,12 @@ def extract_dataframes(
                 "Mapping"
             ].copy(),
 
-
-        # ----------------------------------------------------
-        # EMPLOYMENT STATUS RULES
-        # ----------------------------------------------------
-
         "employment_rules":
             workbooks[
                 "mapping"
             ][
                 "Règles situation d'emploi"
             ].copy(),
-
-
-        # ----------------------------------------------------
-        # JOB DETAIL JOIN INSTRUCTIONS
-        # ----------------------------------------------------
 
         "job_join":
             workbooks[
@@ -528,11 +385,6 @@ def extract_dataframes(
                 "Jointure - Détail du poste"
             ].copy(),
 
-
-        # ----------------------------------------------------
-        # EMPLOYMENT REASON JOIN INSTRUCTIONS
-        # ----------------------------------------------------
-
         "employment_reason_join":
             workbooks[
                 "mapping"
@@ -540,22 +392,12 @@ def extract_dataframes(
                 "Jointure - Motif des situations"
             ].copy(),
 
-
-        # ----------------------------------------------------
-        # JOB DETAILS
-        # ----------------------------------------------------
-
         "job_details":
             workbooks[
                 "job_details"
             ][
                 "Feuil1"
             ].copy(),
-
-
-        # ----------------------------------------------------
-        # EMPLOYMENT REASONS
-        # ----------------------------------------------------
 
         "employment_reasons":
             workbooks[
@@ -575,19 +417,15 @@ def normalize_source_data(
     source_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Normalize System A / HR values.
-
-    This changes representation only.
-
-    It does NOT determine whether data is correct.
+    Normalize System A values.
     """
 
     df = source_df.copy()
 
 
-    # ========================================================
-    # IDENTIFIERS / CODES
-    # ========================================================
+    # --------------------------------------------------------
+    # IDENTIFIERS
+    # --------------------------------------------------------
 
     identifier_columns = [
         "Matricule",
@@ -618,9 +456,9 @@ def normalize_source_data(
             )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # TEXT
-    # ========================================================
+    # --------------------------------------------------------
 
     text_columns = [
         "NomFamille",
@@ -649,9 +487,9 @@ def normalize_source_data(
             )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # DATES
-    # ========================================================
+    # --------------------------------------------------------
 
     date_columns = [
         "DateEmbaucheRécente",
@@ -674,9 +512,9 @@ def normalize_source_data(
             )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # BOOLEANS
-    # ========================================================
+    # --------------------------------------------------------
 
     boolean_columns = [
         "EstPermanent",
@@ -696,9 +534,9 @@ def normalize_source_data(
             )
 
 
-    # ========================================================
-    # NUMERIC QUANTITIES
-    # ========================================================
+    # --------------------------------------------------------
+    # NUMERIC VALUES
+    # --------------------------------------------------------
 
     numeric_columns = [
         "HeuresNormeHebdo",
@@ -730,18 +568,15 @@ def normalize_destination_data(
     destination_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Normalize System B / Time data.
-
-    Mapping.xlsx will later decide which fields participate
-    in corroboration.
+    Normalize System B values.
     """
 
     df = destination_df.copy()
 
 
-    # ========================================================
-    # IDENTIFIERS / CODES
-    # ========================================================
+    # --------------------------------------------------------
+    # IDENTIFIERS
+    # --------------------------------------------------------
 
     identifier_columns = [
         "personId",
@@ -769,9 +604,9 @@ def normalize_destination_data(
             )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # TEXT
-    # ========================================================
+    # --------------------------------------------------------
 
     text_columns = [
         "givenName",
@@ -798,9 +633,9 @@ def normalize_destination_data(
             )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # DATES
-    # ========================================================
+    # --------------------------------------------------------
 
     date_columns = [
         "onboardDate",
@@ -824,9 +659,9 @@ def normalize_destination_data(
             )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # BOOLEANS
-    # ========================================================
+    # --------------------------------------------------------
 
     boolean_columns = [
         "isPrimaryAssignment",
@@ -846,9 +681,9 @@ def normalize_destination_data(
             )
 
 
-    # ========================================================
-    # NUMERIC QUANTITIES
-    # ========================================================
+    # --------------------------------------------------------
+    # NUMERIC VALUES
+    # --------------------------------------------------------
 
     numeric_columns = [
         "wageOverrideAmount",
@@ -882,17 +717,11 @@ def normalize_job_details_data(
     job_details_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Normalize historical position/job information.
-
-    No business meaning is inferred here.
+    Normalize job-detail lookup/history.
     """
 
     df = job_details_df.copy()
 
-
-    # ========================================================
-    # IDENTIFIERS / CODES
-    # ========================================================
 
     identifier_columns = [
         "IdentifiantPoste",
@@ -917,10 +746,6 @@ def normalize_job_details_data(
             )
 
 
-    # ========================================================
-    # EFFECTIVE DATE
-    # ========================================================
-
     if "DateEffetAffectation" in df.columns:
 
         df[
@@ -934,10 +759,6 @@ def normalize_job_details_data(
             )
         )
 
-
-    # ========================================================
-    # NUMERIC QUANTITIES
-    # ========================================================
 
     numeric_columns = [
         "HeuresSemaineContrat",
@@ -970,7 +791,7 @@ def normalize_employment_reasons_data(
     employment_reasons_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Normalize employment-reason lookup codes.
+    Normalize employment-reason lookup.
     """
 
     df = employment_reasons_df.copy()
@@ -1010,10 +831,7 @@ def print_normalization_example(
     columns: list[str],
 ) -> None:
     """
-    Display raw and normalized values side-by-side.
-
-    This proves that raw values remain available for
-    traceability.
+    Display original and normalized values.
     """
 
     print(
@@ -1075,12 +893,12 @@ def preview_normalized_data(
     employment_reasons_df: pd.DataFrame,
 ) -> None:
     """
-    Display small samples from normalized datasets.
+    Display normalized dataset samples.
     """
 
-    # ========================================================
+    # --------------------------------------------------------
     # SYSTEM A
-    # ========================================================
+    # --------------------------------------------------------
 
     print(
         "\n" + "=" * 70
@@ -1099,9 +917,9 @@ def preview_normalized_data(
     )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # SYSTEM B
-    # ========================================================
+    # --------------------------------------------------------
 
     print(
         "\n" + "=" * 70
@@ -1149,9 +967,9 @@ def preview_normalized_data(
     )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # JOB DETAILS
-    # ========================================================
+    # --------------------------------------------------------
 
     print(
         "\n" + "=" * 70
@@ -1170,9 +988,9 @@ def preview_normalized_data(
     )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # EMPLOYMENT REASONS
-    # ========================================================
+    # --------------------------------------------------------
 
     print(
         "\n" + "=" * 70
@@ -1192,6 +1010,86 @@ def preview_normalized_data(
 
 
 # ============================================================
+# STEP 3G
+# PRINT FULL BUSINESS RULE DETAILS
+# ============================================================
+
+def preview_full_rule_details(
+    parsed_mapping_df: pd.DataFrame
+) -> None:
+    """
+    Print every rule-driven or supporting mapping row together
+    with its original rule text.
+
+    This is temporary diagnostic output used before business
+    rules are implemented.
+    """
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - FULL RULE-BASED MAPPING DETAILS"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    rule_rows = parsed_mapping_df[
+
+        parsed_mapping_df[
+            "row_type"
+        ].isin(
+            [
+                "RULE_BASED",
+                "RULE_CONTINUATION",
+                "SUPPORTING_SOURCE",
+            ]
+        )
+
+    ]
+
+
+    if rule_rows.empty:
+
+        print(
+            "\nNo rule-based mapping rows found."
+        )
+
+        return
+
+
+    for _, row in rule_rows.iterrows():
+
+        print(
+            f"\nExcel row {row['mapping_row']}"
+        )
+
+        print(
+            f"  Type:        {row['row_type']}"
+        )
+
+        print(
+            f"  Description: {row['description']}"
+        )
+
+        print(
+            f"  Source:      {row['source_field']}"
+        )
+
+        print(
+            f"  Destination: {row['destination_field']}"
+        )
+
+        print(
+            f"  Rule:        {row['rule_text']}"
+        )
+
+
+# ============================================================
 # MAIN PROGRAM
 # ============================================================
 
@@ -1199,14 +1097,14 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 1
-    # LOAD WORKBOOKS
+    # LOAD INPUT FILES
     # ========================================================
 
     workbooks = load_all_data()
 
 
     # ========================================================
-    # INSPECT INPUT STRUCTURE
+    # INPUT STRUCTURE
     # ========================================================
 
     inspect_workbooks(
@@ -1216,7 +1114,7 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 2A
-    # EXTRACT WORKSHEETS
+    # EXTRACT DATAFRAMES
     # ========================================================
 
     dataframes = extract_dataframes(
@@ -1315,15 +1213,9 @@ if __name__ == "__main__":
     # ========================================================
 
     print_normalization_example(
-
         dataset_name="SYSTEM A",
-
-        raw_df=
-            raw_source_df,
-
-        normalized_df=
-            source_df,
-
+        raw_df=raw_source_df,
+        normalized_df=source_df,
         columns=[
             "Matricule",
             "DateEmbaucheRécente",
@@ -1338,15 +1230,9 @@ if __name__ == "__main__":
     # ========================================================
 
     print_normalization_example(
-
         dataset_name="SYSTEM B",
-
-        raw_df=
-            raw_destination_df,
-
-        normalized_df=
-            destination_df,
-
+        raw_df=raw_destination_df,
+        normalized_df=destination_df,
         columns=[
             "personId",
             "onboardDate",
@@ -1361,15 +1247,9 @@ if __name__ == "__main__":
     # ========================================================
 
     print_normalization_example(
-
         dataset_name="JOB DETAILS",
-
-        raw_df=
-            raw_job_details_df,
-
-        normalized_df=
-            job_details_df,
-
+        raw_df=raw_job_details_df,
+        normalized_df=job_details_df,
         columns=[
             "IdentifiantPoste",
             "DateEffetAffectation",
@@ -1384,11 +1264,9 @@ if __name__ == "__main__":
     # ========================================================
 
     parsed_mapping_df = parse_mapping_sheet(
-
         dataframes[
             "mapping"
         ]
-
     )
 
 
@@ -1398,11 +1276,9 @@ if __name__ == "__main__":
     # ========================================================
 
     employment_rules_df = parse_employment_rules(
-
         dataframes[
             "employment_rules"
         ]
-
     )
 
 
@@ -1412,25 +1288,21 @@ if __name__ == "__main__":
     # ========================================================
 
     job_join_df = parse_join_sheet(
-
         dataframes[
             "job_join"
         ]
-
     )
 
 
     # ========================================================
     # STEP 3D
-    # PARSE EMPLOYMENT-REASON JOIN INSTRUCTIONS
+    # PARSE EMPLOYMENT REASON JOIN INSTRUCTIONS
     # ========================================================
 
     employment_reason_join_df = parse_join_sheet(
-
         dataframes[
             "employment_reason_join"
         ]
-
     )
 
 
@@ -1479,8 +1351,19 @@ if __name__ == "__main__":
 
 
     # ========================================================
+    # STEP 3G
+    # DISPLAY FULL RULE TEXT
+    # ========================================================
+
+    preview_full_rule_details(
+        parsed_mapping_df=
+            parsed_mapping_df
+    )
+
+
+    # ========================================================
     # STEP 4A
-    # FIND ROWS WITH MISSING EMPLOYEE IDS
+    # FIND MISSING EMPLOYEE IDS
     # ========================================================
 
     (
@@ -1539,23 +1422,6 @@ if __name__ == "__main__":
     # STEP 5A
     # MATCH ASSIGNMENTS
     # ========================================================
-    #
-    # IMPORTANT:
-    #
-    # Assignment matching is deliberately conservative.
-    #
-    # We use:
-    #
-    #     employee identity
-    #
-    # and:
-    #
-    #     assignment type
-    #
-    # We DO NOT use fields such as positionId to force a match,
-    # because positionId itself must later be corroborated.
-    #
-    # ========================================================
 
     assignment_matches_df = match_assignments(
 
@@ -1583,6 +1449,143 @@ if __name__ == "__main__":
 
 
     # ========================================================
+    # STEP 6A
+    # DIRECT FIELD CORROBORATION
+    # ========================================================
+
+    comparison_df = compare_direct_mappings(
+
+        raw_source_df=
+            raw_source_df,
+
+        raw_destination_df=
+            raw_destination_df,
+
+        source_df=
+            source_df,
+
+        destination_df=
+            destination_df,
+
+        parsed_mapping_df=
+            parsed_mapping_df,
+
+        assignment_matches_df=
+            assignment_matches_df,
+    )
+
+
+    # ========================================================
+    # STEP 6B
+    # DISPLAY DIRECT COMPARISON RESULTS
+    # ========================================================
+
+    preview_direct_comparisons(
+
+        comparison_df=
+            comparison_df,
+    )
+
+
+    # ========================================================
+    # STEP 6C
+    # SANITY CHECK
+    # ========================================================
+
+    deterministic_match_count = len(
+
+        assignment_matches_df[
+
+            assignment_matches_df[
+                "assignment_match_status"
+            ] == "MATCHED"
+
+        ]
+
+    )
+
+
+    direct_mapping_count = len(
+
+        parsed_mapping_df[
+
+            parsed_mapping_df[
+                "row_type"
+            ] == "DIRECT"
+
+        ]
+
+    )
+
+
+    expected_comparison_count = (
+        deterministic_match_count
+        *
+        direct_mapping_count
+    )
+
+
+    actual_comparison_count = len(
+        comparison_df
+    )
+
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - DIRECT COMPARISON SANITY CHECK"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    print(
+        f"\nDeterministic assignment matches: "
+        f"{deterministic_match_count}"
+    )
+
+
+    print(
+        f"Direct mappings: "
+        f"{direct_mapping_count}"
+    )
+
+
+    print(
+        f"Expected direct comparisons: "
+        f"{expected_comparison_count}"
+    )
+
+
+    print(
+        f"Actual direct comparisons: "
+        f"{actual_comparison_count}"
+    )
+
+
+    if (
+        actual_comparison_count
+        ==
+        expected_comparison_count
+    ):
+
+        print(
+            "\nDirect comparison count is correct."
+        )
+
+    else:
+
+        print(
+            "\nWARNING: Direct comparison count does not "
+            "match the expected number."
+        )
+
+
+    # ========================================================
     # FINAL SUCCESS MESSAGE
     # ========================================================
 
@@ -1592,17 +1595,22 @@ if __name__ == "__main__":
 
     print(
         "CorroborIA loading, normalization, mapping, "
-        "employee matching and assignment matching "
-        "completed successfully."
+        "employee matching, assignment matching and "
+        "direct field corroboration completed successfully."
     )
 
     print(
-        "Raw datasets were preserved for traceability."
+        "Raw values and normalized values were preserved "
+        "for traceability."
     )
 
     print(
-        "No field corroboration or business-rule verdicts "
-        "have been executed yet."
+        "Business rules have not yet been applied."
+    )
+
+    print(
+        "Full mapping rule instructions were displayed "
+        "for review before rule implementation."
     )
 
     print(

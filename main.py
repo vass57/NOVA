@@ -7,19 +7,22 @@
 #
 # STEP 1
 #   ✅ Load files
-#   ✅ Validate files
+#   ✅ Validate required files
 #   ✅ Repair malformed job-details workbook
 #
 # STEP 2
 #   ✅ Preserve raw data
-#   ✅ Normalize all datasets
+#   ✅ Normalize System A
+#   ✅ Normalize System B
+#   ✅ Normalize job details
+#   ✅ Normalize employment reasons
 #
 # STEP 3
-#   ✅ Parse mapping
-#   ✅ Classify direct / rule-based mappings
+#   ✅ Parse Mapping.xlsx
+#   ✅ Classify mapping rows
 #   ✅ Parse supporting rule tables
 #   ✅ Validate direct mappings
-#   ✅ Print detailed rule instructions
+#   ✅ Display full business-rule instructions
 #
 # STEP 4
 #   ✅ Match employees
@@ -28,15 +31,22 @@
 #   ✅ Match assignments conservatively
 #
 # STEP 6
-#   ✅ Compare direct mapped fields
-#   ✅ Detect exact / normalized / discrepant values
+#   ✅ Compare DIRECT mapped fields
+#   ✅ Distinguish exact / normalized / discrepant values
+#
+# STEP 7
+#   ✅ Execute deterministic business rules
+#   ✅ Derive expected destination values
+#   ✅ Produce deterministic verdicts
 #
 # NEXT
-#   ⬜ Implement deterministic business rules
-#   ⬜ Derive expected values
-#   ⬜ Apply final deterministic verdicts
-#   ⬜ Send ambiguous cases to AI layer
-#   ⬜ Generate final report
+#
+#   ⬜ Combine direct + rule-based results
+#   ⬜ Handle unmatched assignments
+#   ⬜ Handle ambiguous assignment groups
+#   ⬜ AI analysis for unresolved cases
+#   ⬜ Priority / confidence
+#   ⬜ Final exportable report
 #
 # ============================================================
 
@@ -87,6 +97,11 @@ from corroboria.comparator import (
     preview_direct_comparisons,
 )
 
+from corroboria.business_rules import (
+    evaluate_rule_based_fields,
+    preview_rule_based_results,
+)
+
 
 # ============================================================
 # PROJECT PATHS
@@ -127,10 +142,11 @@ FILES = {
 
 def check_files_exist() -> None:
     """
-    Ensure that every required file exists.
+    Ensure that every required input file exists.
     """
 
     missing_files = []
+
 
     for name, path in FILES.items():
 
@@ -139,6 +155,7 @@ def check_files_exist() -> None:
             missing_files.append(
                 f"{name}: {path}"
             )
+
 
     if missing_files:
 
@@ -177,8 +194,8 @@ def fix_comma_separated_sheet(
     df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Repair job-detail workbook if all CSV data was placed
-    inside one Excel column.
+    Repair a worksheet containing CSV-style data inside
+    one Excel column.
     """
 
     if len(df.columns) != 1:
@@ -231,7 +248,7 @@ def fix_comma_separated_sheet(
 
 # ============================================================
 # STEP 1D
-# LOAD ALL DATA
+# LOAD ALL WORKBOOKS
 # ============================================================
 
 def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
@@ -258,7 +275,8 @@ def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
 
 
         # ----------------------------------------------------
-        # Special repair for job-detail workbook
+        # SPECIAL CASE:
+        # repair malformed job-details workbook.
         # ----------------------------------------------------
 
         if name == "job_details":
@@ -424,7 +442,7 @@ def normalize_source_data(
 
 
     # --------------------------------------------------------
-    # IDENTIFIERS
+    # IDENTIFIERS / CODES
     # --------------------------------------------------------
 
     identifier_columns = [
@@ -575,7 +593,7 @@ def normalize_destination_data(
 
 
     # --------------------------------------------------------
-    # IDENTIFIERS
+    # IDENTIFIERS / CODES
     # --------------------------------------------------------
 
     identifier_columns = [
@@ -1018,11 +1036,7 @@ def preview_full_rule_details(
     parsed_mapping_df: pd.DataFrame
 ) -> None:
     """
-    Print every rule-driven or supporting mapping row together
-    with its original rule text.
-
-    This is temporary diagnostic output used before business
-    rules are implemented.
+    Display full mapping rules before executing them.
     """
 
     print(
@@ -1104,7 +1118,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # INPUT STRUCTURE
+    # DISPLAY INPUT STRUCTURE
     # ========================================================
 
     inspect_workbooks(
@@ -1213,9 +1227,15 @@ if __name__ == "__main__":
     # ========================================================
 
     print_normalization_example(
+
         dataset_name="SYSTEM A",
-        raw_df=raw_source_df,
-        normalized_df=source_df,
+
+        raw_df=
+            raw_source_df,
+
+        normalized_df=
+            source_df,
+
         columns=[
             "Matricule",
             "DateEmbaucheRécente",
@@ -1230,9 +1250,15 @@ if __name__ == "__main__":
     # ========================================================
 
     print_normalization_example(
+
         dataset_name="SYSTEM B",
-        raw_df=raw_destination_df,
-        normalized_df=destination_df,
+
+        raw_df=
+            raw_destination_df,
+
+        normalized_df=
+            destination_df,
+
         columns=[
             "personId",
             "onboardDate",
@@ -1247,9 +1273,15 @@ if __name__ == "__main__":
     # ========================================================
 
     print_normalization_example(
+
         dataset_name="JOB DETAILS",
-        raw_df=raw_job_details_df,
-        normalized_df=job_details_df,
+
+        raw_df=
+            raw_job_details_df,
+
+        normalized_df=
+            job_details_df,
+
         columns=[
             "IdentifiantPoste",
             "DateEffetAffectation",
@@ -1264,9 +1296,11 @@ if __name__ == "__main__":
     # ========================================================
 
     parsed_mapping_df = parse_mapping_sheet(
+
         dataframes[
             "mapping"
         ]
+
     )
 
 
@@ -1276,9 +1310,11 @@ if __name__ == "__main__":
     # ========================================================
 
     employment_rules_df = parse_employment_rules(
+
         dataframes[
             "employment_rules"
         ]
+
     )
 
 
@@ -1288,9 +1324,11 @@ if __name__ == "__main__":
     # ========================================================
 
     job_join_df = parse_join_sheet(
+
         dataframes[
             "job_join"
         ]
+
     )
 
 
@@ -1300,9 +1338,11 @@ if __name__ == "__main__":
     # ========================================================
 
     employment_reason_join_df = parse_join_sheet(
+
         dataframes[
             "employment_reason_join"
         ]
+
     )
 
 
@@ -1356,6 +1396,7 @@ if __name__ == "__main__":
     # ========================================================
 
     preview_full_rule_details(
+
         parsed_mapping_df=
             parsed_mapping_df
     )
@@ -1489,7 +1530,7 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 6C
-    # SANITY CHECK
+    # DIRECT COMPARISON SANITY CHECK
     # ========================================================
 
     deterministic_match_count = len(
@@ -1581,7 +1622,215 @@ if __name__ == "__main__":
 
         print(
             "\nWARNING: Direct comparison count does not "
-            "match the expected number."
+            "match expected count."
+        )
+
+
+    # ========================================================
+    # STEP 7A
+    # EXECUTE DETERMINISTIC BUSINESS RULES
+    # ========================================================
+
+    rule_results_df = evaluate_rule_based_fields(
+
+        raw_destination_df=
+            raw_destination_df,
+
+        source_df=
+            source_df,
+
+        destination_df=
+            destination_df,
+
+        job_details_df=
+            job_details_df,
+
+        employment_reasons_df=
+            employment_reasons_df,
+
+        employment_rules_df=
+            employment_rules_df,
+
+        assignment_matches_df=
+            assignment_matches_df,
+    )
+
+
+    # ========================================================
+    # STEP 7B
+    # DISPLAY BUSINESS RULE RESULTS
+    # ========================================================
+
+    preview_rule_based_results(
+
+        rule_results_df=
+            rule_results_df,
+    )
+
+
+    # ========================================================
+    # STEP 7C
+    # BUSINESS RULE SANITY CHECK
+    # ========================================================
+    #
+    # Rule output per deterministic assignment:
+    #
+    #   1 contactEmail
+    #   1 divisionName
+    #   1 positionName
+    #   3 employment-status fields
+    #   1 contractTypeCode
+    #   2 assignment flags
+    #   3 assignment / term dates
+    #
+    # TOTAL:
+    #
+    #   12 rule-based comparisons per matched assignment
+    #
+    # Current dataset:
+    #
+    #   20 × 12 = 240
+    #
+    # ========================================================
+
+    expected_rule_comparisons = (
+        deterministic_match_count
+        *
+        12
+    )
+
+
+    actual_rule_comparisons = len(
+        rule_results_df
+    )
+
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - BUSINESS RULE SANITY CHECK"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    print(
+        f"\nDeterministic assignment matches: "
+        f"{deterministic_match_count}"
+    )
+
+
+    print(
+        "Rule-based destination comparisons "
+        "per assignment: 12"
+    )
+
+
+    print(
+        f"Expected rule-based comparisons: "
+        f"{expected_rule_comparisons}"
+    )
+
+
+    print(
+        f"Actual rule-based comparisons: "
+        f"{actual_rule_comparisons}"
+    )
+
+
+    if (
+        actual_rule_comparisons
+        ==
+        expected_rule_comparisons
+    ):
+
+        print(
+            "\nBusiness-rule comparison count is correct."
+        )
+
+    else:
+
+        print(
+            "\nWARNING: Business-rule comparison count "
+            "does not match expected count."
+        )
+
+
+    # ========================================================
+    # STEP 7D
+    # RULE VERDICT COUNTS
+    # ========================================================
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - CURRENT DETERMINISTIC VERDICT SUMMARY"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    # --------------------------------------------------------
+    # DIRECT VERDICTS
+    # --------------------------------------------------------
+
+    print(
+        "\nDIRECT FIELD RESULTS"
+    )
+
+    print(
+        "-" * 70
+    )
+
+
+    direct_verdict_counts = (
+        comparison_df[
+            "verdict"
+        ]
+        .value_counts()
+    )
+
+
+    for verdict, count in direct_verdict_counts.items():
+
+        print(
+            f"{verdict}: {count}"
+        )
+
+
+    # --------------------------------------------------------
+    # RULE VERDICTS
+    # --------------------------------------------------------
+
+    print(
+        "\nRULE-BASED RESULTS"
+    )
+
+    print(
+        "-" * 70
+    )
+
+
+    rule_verdict_counts = (
+        rule_results_df[
+            "verdict"
+        ]
+        .value_counts()
+    )
+
+
+    for verdict, count in rule_verdict_counts.items():
+
+        print(
+            f"{verdict}: {count}"
         )
 
 
@@ -1595,22 +1844,23 @@ if __name__ == "__main__":
 
     print(
         "CorroborIA loading, normalization, mapping, "
-        "employee matching, assignment matching and "
-        "direct field corroboration completed successfully."
+        "employee matching, assignment matching, direct "
+        "corroboration and deterministic business-rule "
+        "evaluation completed successfully."
     )
 
     print(
-        "Raw values and normalized values were preserved "
+        "Raw and normalized values remain preserved "
         "for traceability."
     )
 
     print(
-        "Business rules have not yet been applied."
+        "Ambiguous and unresolved cases have not yet "
+        "been processed by AI."
     )
 
     print(
-        "Full mapping rule instructions were displayed "
-        "for review before rule implementation."
+        "AI has not been used yet."
     )
 
     print(

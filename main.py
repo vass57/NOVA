@@ -1,25 +1,51 @@
 # ============================================================
 # CORROBORIA
-# STEP 1 - LOAD AND INSPECT THE INPUT FILES
+# PERSON 1 - DATA + RULE ENGINE
 # ============================================================
 #
-# The purpose of this file right now is ONLY to:
+# CURRENT STATUS
 #
-#   1. Locate the input Excel files
-#   2. Make sure they exist
-#   3. Load them into pandas
-#   4. Fix the special formatting problem in détail_du_poste.xlsx
-#   5. Print information about every dataset
+# STEP 1
 #
-# We are NOT doing the actual corroboration yet.
+#   ✅ Locate files
+#   ✅ Verify files exist
+#   ✅ Load Excel workbooks
+#   ✅ Repair malformed job-details workbook
 #
-# We are NOT comparing System A and System B yet.
 #
-# We are NOT applying business rules yet.
+# STEP 2
 #
-# We are NOT using AI yet.
+#   ✅ Extract useful worksheets
+#   ✅ Preserve raw data
+#   ✅ Normalize System A
+#   ✅ Normalize System B
+#   ✅ Normalize job details
+#   ✅ Normalize employment reasons
 #
-# One disaster at a time.
+#
+# NOT IMPLEMENTED YET
+#
+#   ⬜ Mapping parser
+#   ⬜ Employee matching
+#   ⬜ Assignment matching
+#   ⬜ Raw comparisons
+#   ⬜ Business rules
+#   ⬜ AI
+#   ⬜ Final report
+#
+#
+# IMPORTANT ARCHITECTURE RULES
+#
+#   1. Original input files are read-only.
+#
+#   2. Raw values are preserved for traceability.
+#
+#   3. Normalization does not decide whether data is correct.
+#
+#   4. Mapping.xlsx will decide which fields are corroborated.
+#
+#   5. Business rules will execute before AI.
+#
 # ============================================================
 
 
@@ -27,223 +53,87 @@
 # IMPORTS
 # ============================================================
 
-# Path is used to work with file paths and folders.
-#
-# It is cleaner than writing Windows paths manually like:
-#
-# "C:\\Users\\vassi\\Documents\\GitHub\\NOVA\\data"
-#
 from pathlib import Path
-
-
-# StringIO allows Python to treat a string as if it were a file.
-#
-# We need this because the "détail_du_poste.xlsx" file contains
-# comma-separated data inside a single Excel column.
-#
-# We will temporarily convert that column into text and then ask
-# pandas to read that text as CSV-style data.
-#
 from io import StringIO
 
-
-# pandas is the main library we will use for tabular data.
-#
-# Excel worksheets become pandas DataFrames.
-#
-# Think of a DataFrame as basically an Excel table inside Python.
-#
 import pandas as pd
 
 
+from corroboria.normalizer import (
+    normalize_boolean,
+    normalize_date,
+    normalize_identifier,
+    normalize_number,
+    normalize_text,
+)
+
+
 # ============================================================
-# CONFIGURATION
+# PROJECT PATHS
 # ============================================================
 
-# __file__ represents the location of THIS Python file.
-#
-# If main.py is located here:
-#
-# C:\Users\vassi\OneDrive\Documents\GitHub\NOVA\main.py
-#
-# then:
-#
-# Path(__file__).resolve()
-#
-# represents the full path to main.py.
-#
-# .parent removes "main.py" and gives us:
-#
-# C:\Users\vassi\OneDrive\Documents\GitHub\NOVA
-#
+# Directory containing main.py
 BASE_DIR = Path(__file__).resolve().parent
 
 
-# Our Excel files are stored inside a folder called:
-#
-# data
-#
-# So this creates:
-#
-# C:\Users\vassi\OneDrive\Documents\GitHub\NOVA\data
-#
+# Directory containing challenge files
 DATA_DIR = BASE_DIR / "data"
 
 
-# ------------------------------------------------------------
-# List of input files
-# ------------------------------------------------------------
-#
-# FILES is a Python dictionary.
-#
-# Dictionaries contain:
-#
-#     key -> value
-#
-#
-# For example:
-#
-#     "source" -> path to the source Excel file
-#
-#
-# This lets us later write:
-#
-#     FILES["source"]
-#
-# instead of repeating the entire file path.
-#
+# ============================================================
+# INPUT FILES
+# ============================================================
+
 FILES = {
 
-    # --------------------------------------------------------
-    # SYSTEM A
-    # --------------------------------------------------------
-    #
-    # This is the HR/source employee extraction.
-    #
+    # System A - HR source
     "source":
         DATA_DIR / "Employe_Source_Anonymise_VF.xlsx",
 
-
-    # --------------------------------------------------------
-    # SYSTEM B
-    # --------------------------------------------------------
-    #
-    # This is the target/time-management employee extraction.
-    #
+    # System B - Time destination
     "destination":
         DATA_DIR / "Employe_Destination_Anonymise_VF.xlsx",
 
-
-    # --------------------------------------------------------
-    # MAPPING
-    # --------------------------------------------------------
-    #
-    # This tells us which fields from System A correspond
-    # to which fields from System B.
-    #
-    # It also contains business-rule-related worksheets.
-    #
+    # Mapping and business-rule workbook
     "mapping":
         DATA_DIR / "Mapping.xlsx",
 
-
-    # --------------------------------------------------------
-    # JOB DETAILS
-    # --------------------------------------------------------
-    #
-    # This file contains historical job/position information.
-    #
-    # Later, we will use it for certain business rules,
-    # especially rules involving dates and organizational units.
-    #
+    # Historical position/job details
     "job_details":
         DATA_DIR / "détail_du_poste.xlsx",
 
-
-    # --------------------------------------------------------
-    # EMPLOYMENT REASONS
-    # --------------------------------------------------------
-    #
-    # This is a lookup/reference dataset.
-    #
-    # Later, we will use it when evaluating employee status
-    # and status-reason information.
-    #
+    # Employment situation/reason lookup
     "employment_reasons":
         DATA_DIR / "Motif de la situation d'emploi.xlsx",
 }
 
 
 # ============================================================
-# CHECK THAT REQUIRED FILES EXIST
+# STEP 1A
+# VERIFY REQUIRED FILES
 # ============================================================
 
 def check_files_exist() -> None:
     """
-    Verify that every required CorroborIA input file exists.
+    Ensure that all required input files exist.
 
-    This function does NOT open any files.
-
-    It simply checks whether Windows can find them.
-
-    If a file is missing, the program stops and prints a useful
-    error telling us exactly which file could not be found.
-
-    Returns
-    -------
-    None
-
-    This function does not return data.
+    This function does not modify any file.
     """
 
-    # Create an empty list.
-    #
-    # We will add missing files to this list.
-    #
     missing_files = []
 
 
-    # Loop through every file in the FILES dictionary.
-    #
-    # Example:
-    #
-    # name = "source"
-    #
-    # path =
-    # ...\data\Employe_Source_Anonymise_VF.xlsx
-    #
     for name, path in FILES.items():
 
-        # path.exists() returns:
-        #
-        # True
-        #     if the file exists
-        #
-        # False
-        #     if the file cannot be found
-        #
         if not path.exists():
 
-            # If the file does not exist, add it to our
-            # missing_files list.
-            #
             missing_files.append(
                 f"{name}: {path}"
             )
 
 
-    # If missing_files contains at least one item...
-    #
     if missing_files:
 
-        # Stop the program.
-        #
-        # FileNotFoundError is a built-in Python error type.
-        #
-        # "\n".join(...)
-        #
-        # puts every missing file on a separate line.
-        #
         raise FileNotFoundError(
             "The following required files are missing:\n"
             + "\n".join(missing_files)
@@ -251,472 +141,215 @@ def check_files_exist() -> None:
 
 
 # ============================================================
-# LOAD ONE EXCEL FILE
+# STEP 1B
+# LOAD ONE EXCEL WORKBOOK
 # ============================================================
 
-def load_excel_file(path: Path) -> dict[str, pd.DataFrame]:
+def load_excel_file(
+    path: Path
+) -> dict[str, pd.DataFrame]:
     """
-    Load every worksheet from one Excel workbook.
+    Load every worksheet from an Excel workbook.
 
-    Parameters
-    ----------
-    path : Path
-        Path to the Excel file.
+    sheet_name=None means that all worksheets are loaded.
 
-    Returns
-    -------
-    dict[str, pd.DataFrame]
+    IMPORTANT:
 
-        A dictionary where:
+    This only reads the workbook.
 
-            key   = worksheet name
-            value = pandas DataFrame
-
-    Example
-    -------
-
-    If an Excel file contains:
-
-        Sheet1
-        Sheet2
-
-    this function returns something conceptually like:
-
-        {
-            "Sheet1": dataframe_1,
-            "Sheet2": dataframe_2
-        }
+    Nothing is written back to Excel.
     """
 
-    # pd.read_excel() opens an Excel workbook.
-    #
-    # Normally pandas loads only one worksheet.
-    #
-    # We use:
-    #
-    #     sheet_name=None
-    #
-    # which means:
-    #
-    #     "Load ALL worksheets."
-    #
     return pd.read_excel(
-
-        # File to open
         path,
-
-        # Load every worksheet
         sheet_name=None,
-
-        # Keep values as generic Python objects for now.
-        #
-        # We do NOT want pandas aggressively deciding that
-        # certain identifiers are numbers, dates, etc.
-        #
-        # Proper normalization will happen in Step 2.
-        #
         dtype=object,
-
-        # openpyxl is the library used to read .xlsx files.
         engine="openpyxl",
     )
 
 
 # ============================================================
-# FIX THE JOB-DETAILS FILE
+# STEP 1C
+# REPAIR JOB-DETAILS WORKBOOK
 # ============================================================
 
 def fix_comma_separated_sheet(
     df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Repair a worksheet where comma-separated data has been
-    stored inside ONE Excel column.
+    Repair a worksheet that contains CSV-like information
+    inside a single Excel column.
 
-    ------------------------------------------------------------
-    WHY DO WE NEED THIS?
-    ------------------------------------------------------------
+    This occurs in:
 
-    When we loaded détail_du_poste.xlsx, pandas reported:
-
-        Rows: 114
-        Columns: 1
-
-    And the ONE column was named:
-
-        IdentifiantPoste,
-        IdentifiantEmploi,
-        CodeDirectionAffectée,
-        DateEffetAffectation,
-        ...
-
-    That tells us something went wrong with the structure.
-
-    Those are supposed to be separate columns.
-
-    The file basically contains CSV-style text inside Excel.
-
-    ------------------------------------------------------------
-    WHAT THIS FUNCTION DOES
-    ------------------------------------------------------------
-
-    It transforms something like:
-
-        ONE COLUMN
-
-        IdentifiantPoste,IdentifiantEmploi,CodeDirection
-        123,456,ABC
-        789,101,DEF
-
-    into:
-
-        IdentifiantPoste | IdentifiantEmploi | CodeDirection
-        ------------------------------------------------------
-        123               | 456               | ABC
-        789               | 101               | DEF
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame that might contain the formatting problem.
-
-    Returns
-    -------
-    pd.DataFrame
-        Corrected DataFrame if needed.
-
-        Otherwise, the original DataFrame is returned unchanged.
+        détail_du_poste.xlsx
     """
 
-    # --------------------------------------------------------
-    # CHECK NUMBER OF COLUMNS
-    # --------------------------------------------------------
-    #
-    # If the worksheet already contains multiple columns,
-    # it probably does not have this problem.
-    #
-    # So we return the DataFrame unchanged.
-    #
+    # Already normal.
     if len(df.columns) != 1:
         return df
 
 
-    # --------------------------------------------------------
-    # GET THE ONLY COLUMN NAME
-    # --------------------------------------------------------
-    #
-    # df.columns contains all column names.
-    #
-    # [0] means:
-    #
-    #     give me the FIRST column
-    #
-    column_name = str(df.columns[0])
+    column_name = str(
+        df.columns[0]
+    )
 
 
-    # --------------------------------------------------------
-    # CHECK WHETHER THE HEADER CONTAINS COMMAS
-    # --------------------------------------------------------
-    #
-    # Our broken job-details file has a header like:
-    #
-    # IdentifiantPoste,IdentifiantEmploi,CodeDirection...
-    #
-    # If there are no commas, it may simply be a legitimate
-    # one-column worksheet.
-    #
+    # A legitimate one-column worksheet should not be changed.
     if "," not in column_name:
         return df
 
 
-    # --------------------------------------------------------
-    # REBUILD THE ORIGINAL COMMA-SEPARATED TEXT
-    # --------------------------------------------------------
-    #
-    # Start with the current column name because that is
-    # actually the REAL CSV header.
-    #
-    rows = [column_name]
+    # The current Excel column header is actually the CSV header.
+    rows = [
+        column_name
+    ]
 
 
-    # df.iloc[:, 0]
-    #
-    # means:
-    #
-    #     all rows
-    #     from column number 0
-    #
-    # In other words:
-    #
-    #     give me every value from the only column
-    #
+    # Add every row stored inside the single column.
     for value in df.iloc[:, 0]:
 
-        # pd.isna(value) checks whether something is missing.
-        #
-        # Missing values can appear as NaN inside pandas.
-        #
         if pd.isna(value):
 
-            # If the row is empty, add an empty string.
             rows.append("")
 
         else:
 
-            # Otherwise convert the value into text.
-            rows.append(str(value))
+            rows.append(
+                str(value)
+            )
 
 
-    # --------------------------------------------------------
-    # JOIN THE ROWS INTO ONE TEXT BLOCK
-    # --------------------------------------------------------
-    #
-    # "\n" means newline.
-    #
-    # So:
-    #
-    # "\n".join(rows)
-    #
-    # creates something like:
-    #
-    # header1,header2,header3
-    # value1,value2,value3
-    # value4,value5,value6
-    #
-    csv_text = "\n".join(rows)
+    # Rebuild CSV text.
+    csv_text = "\n".join(
+        rows
+    )
 
 
-    # --------------------------------------------------------
-    # CONVERT THAT TEXT INTO A PROPER DATAFRAME
-    # --------------------------------------------------------
-    #
-    # StringIO makes our Python string behave like a file.
-    #
-    # pandas can then use read_csv() on it.
-    #
+    # Parse reconstructed CSV.
     corrected_df = pd.read_csv(
-
         StringIO(csv_text),
-
-        # Our separator is a comma.
         sep=",",
-
-        # Again, keep types generic for now.
-        #
-        # Step 2 will normalize the values properly.
-        #
         dtype=object,
     )
 
 
-    # Give the repaired DataFrame back to the caller.
     return corrected_df
 
 
 # ============================================================
-# LOAD ALL CORROBORIA DATA
+# STEP 1D
+# LOAD ALL WORKBOOKS
 # ============================================================
 
 def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
     """
     Load all CorroborIA input workbooks.
 
-    The result has this general structure:
+    Returned structure:
 
-        workbooks
-        │
-        ├── source
-        │   └── worksheet
-        │       └── DataFrame
-        │
-        ├── destination
-        │   └── worksheet
-        │       └── DataFrame
-        │
-        ├── mapping
-        │   ├── Mapping
-        │   ├── Règles situation d'emploi
-        │   ├── Jointure - Détail du poste
-        │   └── Jointure - Motif des situations
-        │
-        ├── job_details
-        │   └── Feuil1
-        │
-        └── employment_reasons
-            └── Sheet1
+        workbooks["source"]["Employe_Source"]
 
-    Returns
-    -------
-    dict[str, dict[str, pd.DataFrame]]
-        All loaded datasets.
+        workbooks["destination"]["Employe_Destination"]
+
+        workbooks["mapping"]["Mapping"]
+
+        etc.
     """
-
-    # --------------------------------------------------------
-    # FIRST MAKE SURE EVERY FILE EXISTS
-    # --------------------------------------------------------
 
     check_files_exist()
 
 
-    # --------------------------------------------------------
-    # CREATE OUR MAIN DATA CONTAINER
-    # --------------------------------------------------------
-    #
-    # This starts empty.
-    #
-    # We will fill it with each workbook.
-    #
     workbooks = {}
 
 
-    # --------------------------------------------------------
-    # LOOP THROUGH EVERY REQUIRED FILE
-    # --------------------------------------------------------
-
     for name, path in FILES.items():
 
-        # Print progress so we know what Python is loading.
-        #
         print(
             f"Loading {name}: {path.name}"
         )
 
 
-        # ----------------------------------------------------
-        # LOAD THE WORKBOOK
-        # ----------------------------------------------------
-        #
-        # Remember:
-        #
-        # load_excel_file()
-        #
-        # returns ALL worksheets from that workbook.
-        #
-        sheets = load_excel_file(path)
+        sheets = load_excel_file(
+            path
+        )
 
 
         # ----------------------------------------------------
-        # SPECIAL FIX FOR JOB DETAILS
+        # SPECIAL CASE:
+        # Repair job-details workbook
         # ----------------------------------------------------
-        #
-        # We discovered that détail_du_poste.xlsx contains
-        # comma-separated data in a single Excel column.
-        #
-        # Therefore ONLY this workbook needs the repair.
-        #
+
         if name == "job_details":
 
-            # Loop through every worksheet inside the workbook.
-            #
             for sheet_name, df in sheets.items():
 
-                # Replace the worksheet DataFrame with the
-                # repaired version.
-                #
                 sheets[sheet_name] = (
-                    fix_comma_separated_sheet(df)
+                    fix_comma_separated_sheet(
+                        df
+                    )
                 )
 
 
-        # ----------------------------------------------------
-        # STORE THE WORKBOOK
-        # ----------------------------------------------------
-        #
-        # Example:
-        #
-        # workbooks["source"] = {
-        #     "Employe_Source": DataFrame(...)
-        # }
-        #
         workbooks[name] = sheets
 
 
-    # Return everything.
     return workbooks
 
 
 # ============================================================
-# INSPECT LOADED DATA
+# STEP 1E
+# INSPECT INPUT STRUCTURE
 # ============================================================
 
 def inspect_workbooks(
     workbooks: dict[str, dict[str, pd.DataFrame]]
 ) -> None:
     """
-    Print useful information about every loaded workbook.
+    Display workbook structure.
 
-    This does NOT modify any data.
-
-    It simply helps us understand:
-
-        - worksheet names
-        - number of rows
-        - number of columns
-        - column names
+    This is useful during development.
     """
 
-    # Print a blank line and a separator.
-    print("\n" + "=" * 70)
+    print(
+        "\n" + "=" * 70
+    )
 
-    # Print a title.
-    print("CORROBORIA - INPUT DATA SUMMARY")
+    print(
+        "CORROBORIA - INPUT DATA SUMMARY"
+    )
 
-    # Print another separator.
-    print("=" * 70)
+    print(
+        "=" * 70
+    )
 
-
-    # --------------------------------------------------------
-    # LOOP THROUGH WORKBOOKS
-    # --------------------------------------------------------
 
     for workbook_name, sheets in workbooks.items():
 
-        # Example:
-        #
-        # [SOURCE]
-        #
         print(
             f"\n[{workbook_name.upper()}]"
         )
 
 
-        # ----------------------------------------------------
-        # LOOP THROUGH WORKSHEETS
-        # ----------------------------------------------------
-
         for sheet_name, df in sheets.items():
 
-            # Print worksheet name.
             print(
                 f"\n  Sheet: {sheet_name}"
             )
 
-
-            # len(df)
-            #
-            # returns the number of rows.
-            #
             print(
                 f"  Rows: {len(df)}"
             )
 
-
-            # len(df.columns)
-            #
-            # returns the number of columns.
-            #
             print(
                 f"  Columns: {len(df.columns)}"
             )
 
-
-            # Print heading before listing columns.
             print(
                 "  Column names:"
             )
 
 
-            # Loop through every column name.
             for column in df.columns:
 
                 print(
@@ -725,120 +358,904 @@ def inspect_workbooks(
 
 
 # ============================================================
-# OPTIONAL DATA PREVIEW
+# STEP 2A
+# EXTRACT USEFUL DATAFRAMES
 # ============================================================
 
-def preview_workbooks(
-    workbooks: dict[str, dict[str, pd.DataFrame]],
-    number_of_rows: int = 5,
+def extract_dataframes(
+    workbooks: dict[str, dict[str, pd.DataFrame]]
+) -> dict[str, pd.DataFrame]:
+    """
+    Extract the worksheets required by the project.
+
+    .copy() is important.
+
+    We work on copies rather than modifying the DataFrames
+    stored inside the original workbook structure.
+    """
+
+    return {
+
+        # System A
+        "source":
+            workbooks[
+                "source"
+            ][
+                "Employe_Source"
+            ].copy(),
+
+
+        # System B
+        "destination":
+            workbooks[
+                "destination"
+            ][
+                "Employe_Destination"
+            ].copy(),
+
+
+        # Main mapping
+        "mapping":
+            workbooks[
+                "mapping"
+            ][
+                "Mapping"
+            ].copy(),
+
+
+        # Employment-status rules
+        "employment_rules":
+            workbooks[
+                "mapping"
+            ][
+                "Règles situation d'emploi"
+            ].copy(),
+
+
+        # Join definition for job details
+        "job_join":
+            workbooks[
+                "mapping"
+            ][
+                "Jointure - Détail du poste"
+            ].copy(),
+
+
+        # Join definition for employment reasons
+        "employment_reason_join":
+            workbooks[
+                "mapping"
+            ][
+                "Jointure - Motif des situations"
+            ].copy(),
+
+
+        # Job/position history
+        "job_details":
+            workbooks[
+                "job_details"
+            ][
+                "Feuil1"
+            ].copy(),
+
+
+        # Employment-reason lookup
+        "employment_reasons":
+            workbooks[
+                "employment_reasons"
+            ][
+                "Sheet1"
+            ].copy(),
+    }
+
+
+# ============================================================
+# STEP 2B
+# NORMALIZE SYSTEM A
+# ============================================================
+
+def normalize_source_data(
+    source_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Normalize System A / HR employee data.
+
+    This changes representation only.
+
+    It does NOT determine whether a value is correct.
+    """
+
+    df = source_df.copy()
+
+
+    # ========================================================
+    # IDENTIFIERS / CODES
+    # ========================================================
+
+    identifier_columns = [
+        "Matricule",
+        "CodePoste",
+        "CodeEmploi",
+        "ÉchelleSalariale",
+        "CodeImputation",
+        "CodeDirection",
+        "CodeSite",
+        "CatégorieEmploi",
+        "CodeStatutEmploi",
+        "CodeRaisonStatut",
+        "CodeSuspensionAccès",
+        "IdentifiantResponsable",
+        "CodeQuart",
+    ]
+
+
+    for column in identifier_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_identifier
+                )
+            )
+
+
+    # ========================================================
+    # TEXT
+    # ========================================================
+
+    text_columns = [
+        "NomFamille",
+        "PrénomUsuel",
+        "TypeAffectation",
+        "IntituléPoste",
+        "IntituléEmploi",
+        "LibelléÉchelleSalariale",
+        "LibelléImputation",
+        "LibelléDirection",
+        "LibelléSite",
+        "LibelléRaisonStatut",
+        "NomResponsable",
+    ]
+
+
+    for column in text_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_text
+                )
+            )
+
+
+    # ========================================================
+    # DATES
+    # ========================================================
+
+    date_columns = [
+        "DateEmbaucheRécente",
+        "DateEntréePoste",
+        "DateSortiePoste",
+        "DateEffetRaison",
+        "DateRetourAnticipée",
+    ]
+
+
+    for column in date_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_date
+                )
+            )
+
+
+    # ========================================================
+    # BOOLEANS
+    # ========================================================
+
+    boolean_columns = [
+        "EstPermanent",
+        "EstTempsPlein",
+    ]
+
+
+    for column in boolean_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_boolean
+                )
+            )
+
+
+    # ========================================================
+    # NUMERIC QUANTITIES
+    # ========================================================
+
+    numeric_columns = [
+        "HeuresNormeHebdo",
+        "HeuresNormeQuotidienne",
+    ]
+
+
+    for column in numeric_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_number
+                )
+            )
+
+
+    return df
+
+
+# ============================================================
+# STEP 2C
+# NORMALIZE SYSTEM B
+# ============================================================
+
+def normalize_destination_data(
+    destination_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Normalize System B / Time data.
+
+    Only representation is normalized here.
+
+    Mapping.xlsx will later determine which fields actually
+    participate in corroboration.
+    """
+
+    df = destination_df.copy()
+
+
+    # ========================================================
+    # IDENTIFIERS / CODES
+    # ========================================================
+
+    identifier_columns = [
+        "personId",
+        "statusReasonCode",
+        "siteId",
+        "siteCode",
+        "divisionId",
+        "divisionCode",
+        "positionId",
+        "positionCode",
+        "payGradeId",
+        "externalReferenceId",
+    ]
+
+
+    for column in identifier_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_identifier
+                )
+            )
+
+
+    # ========================================================
+    # TEXT
+    # ========================================================
+
+    text_columns = [
+        "givenName",
+        "surname",
+        "contactEmail",
+        "activityStatus",
+        "contractTypeCode",
+        "detailedStatus",
+        "siteName",
+        "divisionName",
+        "positionName",
+    ]
+
+
+    for column in text_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_text
+                )
+            )
+
+
+    # ========================================================
+    # DATES
+    # ========================================================
+
+    date_columns = [
+        "onboardDate",
+        "expectedReturnDate",
+        "assignmentStartDate",
+        "assignmentEndDate",
+        "termStartDate",
+        "termEndDate",
+    ]
+
+
+    for column in date_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_date
+                )
+            )
+
+
+    # ========================================================
+    # BOOLEANS
+    # ========================================================
+
+    boolean_columns = [
+        "isPrimaryAssignment",
+        "isTemporaryAssignment",
+    ]
+
+
+    for column in boolean_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_boolean
+                )
+            )
+
+
+    # ========================================================
+    # NUMERIC QUANTITIES
+    # ========================================================
+
+    numeric_columns = [
+        "wageOverrideAmount",
+        "wageMultiplierFactor",
+        "weeklyHoursOverride",
+        "dailyHoursOverride",
+    ]
+
+
+    for column in numeric_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_number
+                )
+            )
+
+
+    return df
+
+
+# ============================================================
+# STEP 2D
+# NORMALIZE JOB DETAILS
+# ============================================================
+
+def normalize_job_details_data(
+    job_details_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Normalize historical job/position data.
+
+    IMPORTANT:
+
+    No business meaning is inferred here.
+
+    For example, IndicateurGestion is treated as a code rather
+    than automatically assuming that it represents a boolean.
+    """
+
+    df = job_details_df.copy()
+
+
+    # ========================================================
+    # IDENTIFIERS / CODES
+    # ========================================================
+
+    identifier_columns = [
+        "IdentifiantPoste",
+        "IdentifiantEmploi",
+        "CodeDirectionAffectée",
+        "CodeBudget",
+        "IndicateurGestion",
+        "CodePosteSecondaire",
+        "MatriculeGestionnaire",
+    ]
+
+
+    for column in identifier_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_identifier
+                )
+            )
+
+
+    # ========================================================
+    # EFFECTIVE DATE
+    # ========================================================
+
+    if "DateEffetAffectation" in df.columns:
+
+        df[
+            "DateEffetAffectation"
+        ] = (
+            df[
+                "DateEffetAffectation"
+            ]
+            .apply(
+                normalize_date
+            )
+        )
+
+
+    # ========================================================
+    # NUMERIC QUANTITIES
+    # ========================================================
+
+    numeric_columns = [
+        "HeuresSemaineContrat",
+        "HeuresJourContrat",
+        "JoursTravailléesSemaine",
+    ]
+
+
+    for column in numeric_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_number
+                )
+            )
+
+
+    return df
+
+
+# ============================================================
+# STEP 2E
+# NORMALIZE EMPLOYMENT-REASON LOOKUP
+# ============================================================
+
+def normalize_employment_reasons_data(
+    employment_reasons_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Normalize employment-reason lookup values.
+
+    These fields are treated as codes.
+    """
+
+    df = employment_reasons_df.copy()
+
+
+    identifier_columns = [
+        "CodeCatégorieStatut",
+        "CodeStatutSystèmeExterne",
+        "CodeGestionAccès",
+    ]
+
+
+    for column in identifier_columns:
+
+        if column in df.columns:
+
+            df[column] = (
+                df[column]
+                .apply(
+                    normalize_identifier
+                )
+            )
+
+
+    return df
+
+
+# ============================================================
+# STEP 2F
+# BASIC NORMALIZATION TRACE
+# ============================================================
+
+def print_normalization_example(
+    dataset_name: str,
+    raw_df: pd.DataFrame,
+    normalized_df: pd.DataFrame,
+    columns: list[str],
 ) -> None:
     """
-    Print the first few rows of every worksheet.
+    Display raw and normalized values side-by-side.
 
-    df.head(5)
+    This is useful for traceability.
 
-    means:
+    Later, the final corroboration result will preserve:
+        raw value
+        normalized value
+        expected value
+        destination value
 
-        show the first five rows.
-
-    This is useful while developing because it lets us see
-    what the actual values look like.
-
-    Parameters
-    ----------
-    workbooks
-        All loaded workbooks.
-
-    number_of_rows
-        Number of rows to display from each worksheet.
+    For now this function simply proves that we retain both
+    raw and normalized datasets.
     """
 
-    print("\n" + "=" * 70)
-    print("CORROBORIA - DATA PREVIEW")
-    print("=" * 70)
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        f"CORROBORIA - NORMALIZATION TRACE: {dataset_name}"
+    )
+
+    print(
+        "=" * 70
+    )
 
 
-    for workbook_name, sheets in workbooks.items():
+    if raw_df.empty:
 
-        for sheet_name, df in sheets.items():
+        print(
+            "Dataset is empty."
+        )
 
-            print("\n" + "-" * 70)
+        return
+
+
+    raw_row = raw_df.iloc[0]
+    normalized_row = normalized_df.iloc[0]
+
+
+    for column in columns:
+
+        if (
+            column in raw_df.columns
+            and column in normalized_df.columns
+        ):
 
             print(
-                f"{workbook_name.upper()} -> {sheet_name}"
+                f"\n{column}"
             )
 
-            print("-" * 70)
-
-            # df.head(number_of_rows)
-            #
-            # displays only the first few records.
-            #
             print(
-                df.head(number_of_rows)
+                f"  RAW:        {raw_row[column]!r}"
             )
+
+            print(
+                f"  NORMALIZED: {normalized_row[column]!r}"
+            )
+
+
+# ============================================================
+# STEP 2G
+# PREVIEW NORMALIZED DATA
+# ============================================================
+
+def preview_normalized_data(
+    source_df: pd.DataFrame,
+    destination_df: pd.DataFrame,
+    job_details_df: pd.DataFrame,
+    employment_reasons_df: pd.DataFrame,
+) -> None:
+    """
+    Show small samples from all normalized datasets.
+    """
+
+    # ========================================================
+    # SYSTEM A
+    # ========================================================
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - NORMALIZED SOURCE DATA"
+    )
+
+    print(
+        "=" * 70
+    )
+
+    print(
+        source_df.head(5)
+    )
+
+
+    # ========================================================
+    # SYSTEM B
+    # ========================================================
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - NORMALIZED DESTINATION DATA"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    destination_preview_columns = [
+        "personId",
+        "givenName",
+        "surname",
+        "onboardDate",
+        "contractTypeCode",
+        "detailedStatus",
+        "siteCode",
+        "divisionId",
+        "positionId",
+        "positionName",
+        "isPrimaryAssignment",
+        "isTemporaryAssignment",
+        "assignmentStartDate",
+        "weeklyHoursOverride",
+        "dailyHoursOverride",
+    ]
+
+
+    destination_preview_columns = [
+        column
+        for column in destination_preview_columns
+        if column in destination_df.columns
+    ]
+
+
+    print(
+        destination_df[
+            destination_preview_columns
+        ].head(5)
+    )
+
+
+    # ========================================================
+    # JOB DETAILS
+    # ========================================================
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - NORMALIZED JOB DETAILS"
+    )
+
+    print(
+        "=" * 70
+    )
+
+    print(
+        job_details_df.head(5)
+    )
+
+
+    # ========================================================
+    # EMPLOYMENT REASONS
+    # ========================================================
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "CORROBORIA - NORMALIZED EMPLOYMENT REASONS"
+    )
+
+    print(
+        "=" * 70
+    )
+
+    print(
+        employment_reasons_df.head(5)
+    )
 
 
 # ============================================================
 # MAIN PROGRAM
 # ============================================================
 
-# __name__ is a special Python variable.
-#
-# When we run:
-#
-#     py main.py
-#
-# Python sets:
-#
-#     __name__ = "__main__"
-#
-#
-# This means the code below runs when main.py is executed
-# directly.
-#
-# Later, if another Python file imports functions from main.py,
-# this section will NOT automatically run.
-#
 if __name__ == "__main__":
 
-    # --------------------------------------------------------
-    # STEP 1A
-    # LOAD THE INPUT DATA
-    # --------------------------------------------------------
+    # ========================================================
+    # STEP 1
+    # LOAD WORKBOOKS
+    # ========================================================
 
     workbooks = load_all_data()
 
 
-    # --------------------------------------------------------
-    # STEP 1B
-    # INSPECT THE STRUCTURE
-    # --------------------------------------------------------
+    # ========================================================
+    # DEVELOPMENT INSPECTION
+    # ========================================================
 
-    inspect_workbooks(workbooks)
-
-
-    # --------------------------------------------------------
-    # STEP 1C
-    # SHOW SAMPLE DATA
-    # --------------------------------------------------------
-    #
-    # This displays the first 5 rows of each worksheet.
-    #
-    # It is useful right now while we're developing.
-    #
-    # Later, we can remove this once the project is finished.
-    #
-    preview_workbooks(
-        workbooks,
-        number_of_rows=5,
+    inspect_workbooks(
+        workbooks
     )
 
 
-    # --------------------------------------------------------
-    # SUCCESS MESSAGE
-    # --------------------------------------------------------
+    # ========================================================
+    # STEP 2A
+    # EXTRACT DATAFRAMES
+    # ========================================================
+
+    dataframes = extract_dataframes(
+        workbooks
+    )
+
+
+    # ========================================================
+    # PRESERVE RAW DATA
+    # ========================================================
+    #
+    # These raw DataFrames remain available later so that
+    # reports can show exactly what was originally supplied.
+    #
+
+    raw_source_df = (
+        dataframes["source"].copy()
+    )
+
+    raw_destination_df = (
+        dataframes["destination"].copy()
+    )
+
+    raw_job_details_df = (
+        dataframes["job_details"].copy()
+    )
+
+    raw_employment_reasons_df = (
+        dataframes["employment_reasons"].copy()
+    )
+
+
+    # ========================================================
+    # NORMALIZE SYSTEM A
+    # ========================================================
+
+    source_df = normalize_source_data(
+        raw_source_df
+    )
+
+
+    # ========================================================
+    # NORMALIZE SYSTEM B
+    # ========================================================
+
+    destination_df = normalize_destination_data(
+        raw_destination_df
+    )
+
+
+    # ========================================================
+    # NORMALIZE JOB DETAILS
+    # ========================================================
+
+    job_details_df = normalize_job_details_data(
+        raw_job_details_df
+    )
+
+
+    # ========================================================
+    # NORMALIZE EMPLOYMENT REASONS
+    # ========================================================
+
+    employment_reasons_df = (
+        normalize_employment_reasons_data(
+            raw_employment_reasons_df
+        )
+    )
+
+
+    # ========================================================
+    # DISPLAY NORMALIZED DATA
+    # ========================================================
+
+    preview_normalized_data(
+        source_df,
+        destination_df,
+        job_details_df,
+        employment_reasons_df,
+    )
+
+
+    # ========================================================
+    # SHOW RAW → NORMALIZED TRACE EXAMPLES
+    # ========================================================
+
+    print_normalization_example(
+        dataset_name="SYSTEM A",
+        raw_df=raw_source_df,
+        normalized_df=source_df,
+        columns=[
+            "Matricule",
+            "DateEmbaucheRécente",
+            "EstPermanent",
+            "HeuresNormeHebdo",
+        ],
+    )
+
+
+    print_normalization_example(
+        dataset_name="SYSTEM B",
+        raw_df=raw_destination_df,
+        normalized_df=destination_df,
+        columns=[
+            "personId",
+            "onboardDate",
+            "isPrimaryAssignment",
+            "weeklyHoursOverride",
+        ],
+    )
+
+
+    print_normalization_example(
+        dataset_name="JOB DETAILS",
+        raw_df=raw_job_details_df,
+        normalized_df=job_details_df,
+        columns=[
+            "IdentifiantPoste",
+            "DateEffetAffectation",
+            "HeuresSemaineContrat",
+        ],
+    )
+
+
+    # ========================================================
+    # FINAL MESSAGE
+    # ========================================================
 
     print(
-        "\nAll files loaded successfully."
+        "\n" + "=" * 70
+    )
+
+    print(
+        "All CorroborIA datasets normalized successfully."
+    )
+
+    print(
+        "Raw datasets were preserved for future traceability."
+    )
+
+    print(
+        "=" * 70
     )

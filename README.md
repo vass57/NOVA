@@ -2,7 +2,6 @@ CorroborIA is a reconciliation application created for the Loto-Québec Détecti
 It compares employee information from System A - HR and System B - Time and helps determine whether a difference is normal, justified, a real anomaly, or something that should be reviewed.
 
 
-
 After running the reconciliation, CorroborIA groups results into four categories:
 - Match
   The information in both systems agrees.

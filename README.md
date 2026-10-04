@@ -10,7 +10,7 @@ After running the reconciliation, CorroborIA groups results into four categories
   The values look different, but after normalization they represent the same information.
 
 - Actual anomaly
-  The expected value is known, but System B contains a different value.
+  The expected value is known, but System B contains a different value. 
 
 - Needs review
   The case cannot be resolved safely using deterministic rules alone.

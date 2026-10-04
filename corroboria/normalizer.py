@@ -1,33 +1,18 @@
 # ============================================================
 # CORROBORIA
-# NORMALIZATION UTILITIES
+# DATA NORMALIZATION
 # ============================================================
 #
-# This module contains reusable functions used to normalize
-# values before System A and System B are compared.
+# PURPOSE
+#
+# Normalize representation differences between System A,
+# System B and supporting extracts.
 #
 # IMPORTANT:
 #
-# Normalization is NOT a business rule.
+# Normalization DOES NOT decide whether a value is correct.
 #
-# Normalization only changes representation.
-#
-# Example:
-#
-#     48
-#     48.0
-#     "48"
-#
-# may all represent the same identifier.
-#
-# Likewise:
-#
-#     1995-02-09
-#     1995-02-09T00:00:00.000Z
-#
-# may represent the same date.
-#
-# The original Excel files are NEVER modified.
+# It only makes equivalent representations comparable.
 #
 # ============================================================
 
@@ -37,7 +22,6 @@
 # ============================================================
 
 from datetime import date, datetime
-from numbers import Number
 import re
 
 import pandas as pd
@@ -49,38 +33,18 @@ import pandas as pd
 
 def normalize_empty(value):
     """
-    Convert different representations of missing data to None.
-
-    Examples:
-
-        None
-        NaN
-        NaT
-        ""
-        "   "
-        "NULL"
-        "None"
-
-    all become:
-
-        None
+    Normalize blank / missing values to None.
     """
 
-    # --------------------------------------------------------
-    # Already None
-    # --------------------------------------------------------
-
     if value is None:
+
         return None
 
-
-    # --------------------------------------------------------
-    # Pandas missing values
-    # --------------------------------------------------------
 
     try:
 
         if pd.isna(value):
+
             return None
 
     except (
@@ -91,15 +55,15 @@ def normalize_empty(value):
         pass
 
 
-    # --------------------------------------------------------
-    # String-based empty values
-    # --------------------------------------------------------
+    if isinstance(
+        value,
+        str,
+    ):
 
-    if isinstance(value, str):
+        text = value.strip()
 
-        cleaned = value.strip()
 
-        if cleaned.lower() in {
+        if text.lower() in {
             "",
             "null",
             "none",
@@ -114,6 +78,158 @@ def normalize_empty(value):
 
 
 # ============================================================
+# MOJIBAKE REPAIR
+# ============================================================
+
+def mojibake_score(
+    text: str
+) -> int:
+    """
+    Count common characters/sequences associated with broken
+    UTF-8 decoding.
+
+    Lower score is better.
+    """
+
+    suspicious_sequences = [
+        "Ã",
+        "Â",
+        "â€",
+        "â€™",
+        "â€œ",
+        "â€",
+        "â€“",
+        "â€”",
+        "ï»¿",
+        "�",
+    ]
+
+
+    return sum(
+        text.count(
+            sequence
+        )
+        for sequence in suspicious_sequences
+    )
+
+
+def repair_mojibake(
+    text: str
+) -> str:
+    """
+    Attempt conservative repair of common UTF-8 / Latin-1 /
+    Windows-1252 mojibake.
+
+    Example:
+
+        Absence complÃ¨te
+            ->
+        Absence complète
+
+    The repaired version is accepted ONLY when it reduces
+    the number of suspicious encoding sequences.
+    """
+
+    if not isinstance(
+        text,
+        str,
+    ):
+
+        return text
+
+
+    original_score = mojibake_score(
+        text
+    )
+
+
+    if original_score == 0:
+
+        return text
+
+
+    candidates = [
+        text
+    ]
+
+
+    # --------------------------------------------------------
+    # LATIN-1 -> UTF-8
+    # --------------------------------------------------------
+
+    try:
+
+        candidate = (
+            text
+            .encode(
+                "latin1"
+            )
+            .decode(
+                "utf-8"
+            )
+        )
+
+        candidates.append(
+            candidate
+        )
+
+    except (
+        UnicodeEncodeError,
+        UnicodeDecodeError,
+    ):
+
+        pass
+
+
+    # --------------------------------------------------------
+    # WINDOWS-1252 -> UTF-8
+    # --------------------------------------------------------
+
+    try:
+
+        candidate = (
+            text
+            .encode(
+                "cp1252"
+            )
+            .decode(
+                "utf-8"
+            )
+        )
+
+        candidates.append(
+            candidate
+        )
+
+    except (
+        UnicodeEncodeError,
+        UnicodeDecodeError,
+    ):
+
+        pass
+
+
+    best = min(
+        candidates,
+        key=mojibake_score,
+    )
+
+
+    if (
+        mojibake_score(
+            best
+        )
+        <
+        original_score
+    ):
+
+        return best
+
+
+    return text
+
+
+# ============================================================
 # TEXT NORMALIZATION
 # ============================================================
 
@@ -121,25 +237,40 @@ def normalize_text(value):
     """
     Normalize ordinary text.
 
-    Example:
+    Operations:
 
-        "   Bonjour   "
+        - missing -> None
+        - convert to string
+        - trim surrounding whitespace
+        - repair obvious mojibake
 
-    becomes:
+    Accents are NOT removed here.
 
-        "Bonjour"
-
-    Missing values become None.
+    Accent removal is a business rule for specific fields,
+    not a general normalization rule.
     """
 
-    value = normalize_empty(value)
+    value = normalize_empty(
+        value
+    )
 
 
     if value is None:
+
         return None
 
 
-    return str(value).strip()
+    text = str(
+        value
+    ).strip()
+
+
+    text = repair_mojibake(
+        text
+    )
+
+
+    return text
 
 
 # ============================================================
@@ -152,102 +283,101 @@ def normalize_identifier(value):
 
     Examples:
 
-        48
-        48.0
-        "48"
+        1545850
+            -> "1545850"
 
-    become:
+        1545850.0
+            -> "1545850"
 
-        "48"
+        "1545850.0"
+            -> "1545850"
 
+        "00397"
+            -> "00397"
 
-    IMPORTANT:
-
-    Identifiers are treated as text, not quantities.
-
-    Strings containing leading zeroes are preserved.
-
-    Example:
-
-        "001234"
-
-    remains:
-
-        "001234"
+    Leading zeroes in existing strings are preserved.
     """
 
-    value = normalize_empty(value)
+    value = normalize_empty(
+        value
+    )
 
 
     if value is None:
+
         return None
 
 
-    # ========================================================
-    # STRING IDENTIFIER
-    # ========================================================
+    # --------------------------------------------------------
+    # BOOL SHOULD NOT BECOME 1 / 0 IDENTIFIERS
+    # --------------------------------------------------------
 
-    if isinstance(value, str):
+    if isinstance(
+        value,
+        bool,
+    ):
 
-        text = value.strip()
-
-
-        # Remove a meaningless decimal suffix.
-        #
-        # "48.0" -> "48"
-        #
-        # But:
-        #
-        # "001234" remains "001234"
-        #
-        if re.fullmatch(
-            r"-?\d+\.0+",
-            text,
-        ):
-
-            return text.split(".")[0]
+        return str(
+            value
+        )
 
 
-        return text
+    # --------------------------------------------------------
+    # INTEGER
+    # --------------------------------------------------------
+
+    if isinstance(
+        value,
+        int,
+    ):
+
+        return str(
+            value
+        )
 
 
-    # ========================================================
-    # NUMERIC IDENTIFIER
-    # ========================================================
+    # --------------------------------------------------------
+    # FLOAT
+    # --------------------------------------------------------
 
-    if isinstance(value, Number):
+    if isinstance(
+        value,
+        float,
+    ):
 
-        try:
+        if value.is_integer():
 
-            number = float(value)
-
-
-            # 48.0 -> "48"
-            if number.is_integer():
-
-                return str(
-                    int(number)
+            return str(
+                int(
+                    value
                 )
+            )
 
 
-            # Preserve meaningful decimals if they exist.
-            return str(number)
+        return str(
+            value
+        )
 
 
-        except (
-            ValueError,
-            TypeError,
-            OverflowError,
-        ):
+    # --------------------------------------------------------
+    # STRING / OTHER
+    # --------------------------------------------------------
 
-            pass
+    text = str(
+        value
+    ).strip()
 
 
-    # ========================================================
-    # FALLBACK
-    # ========================================================
+    # Remove trailing .0 ONLY when the entire value is numeric.
+    if re.fullmatch(
+        r"-?\d+\.0",
+        text,
+    ):
 
-    return str(value).strip()
+        return text[:-2]
+
+
+    return text
 
 
 # ============================================================
@@ -256,87 +386,194 @@ def normalize_identifier(value):
 
 def normalize_boolean(value):
     """
-    Normalize boolean-like values.
-
-    True examples:
-
-        True
-        1
-        "1"
-        "true"
-        "yes"
-        "oui"
-
-    False examples:
-
-        False
-        0
-        "0"
-        "false"
-        "no"
-        "non"
-
-    Unknown values return None.
-
-    We never guess.
+    Normalize common boolean representations.
     """
 
-    value = normalize_empty(value)
+    value = normalize_empty(
+        value
+    )
 
 
     if value is None:
+
         return None
 
 
-    # ========================================================
-    # NATIVE / NUMPY BOOLEAN-LIKE VALUES
-    # ========================================================
+    if isinstance(
+        value,
+        bool,
+    ):
 
-    if value == True:
-        return True
-
-
-    if value == False:
-        return False
+        return value
 
 
-    # ========================================================
-    # TEXT VALUES
-    # ========================================================
+    # NumPy boolean values are safely handled here too.
+    if str(
+        type(
+            value
+        )
+    ).endswith(
+        "bool_'>"
+    ):
 
-    text = str(value).strip().lower()
+        return bool(
+            value
+        )
+
+
+    if isinstance(
+        value,
+        (int, float),
+    ):
+
+        if value == 1:
+
+            return True
+
+
+        if value == 0:
+
+            return False
+
+
+    text = str(
+        value
+    ).strip().lower()
 
 
     true_values = {
         "true",
-        "1",
+        "t",
         "yes",
-        "oui",
         "y",
+        "oui",
         "o",
+        "1",
         "vrai",
     }
 
 
     false_values = {
         "false",
-        "0",
+        "f",
         "no",
-        "non",
         "n",
+        "non",
+        "0",
         "faux",
     }
 
 
     if text in true_values:
+
         return True
 
 
     if text in false_values:
+
         return False
 
 
     return None
+
+
+# ============================================================
+# EXCEL SERIAL DATE
+# ============================================================
+
+def excel_serial_to_date(
+    value
+):
+    """
+    Convert an Excel serial date using Excel's standard
+    1900-date-system origin.
+
+    Pandas uses:
+
+        1899-12-30
+
+    which correctly accommodates Excel's historic leap-year
+    quirk.
+
+    IMPORTANT:
+
+    The previous implementation required the serial to be
+    >= 20000.
+
+    That incorrectly rejected valid older dates such as:
+
+        18484
+        19110
+
+    We now accept the normal positive Excel serial range.
+    """
+
+    try:
+
+        number = float(
+            value
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return None
+
+
+    # --------------------------------------------------------
+    # MUST REPRESENT A WHOLE-DAY SERIAL
+    # --------------------------------------------------------
+
+    if not number.is_integer():
+
+        return None
+
+
+    serial = int(
+        number
+    )
+
+
+    # --------------------------------------------------------
+    # REASONABLE EXCEL DATE RANGE
+    #
+    # 1      = 1900 era
+    # 80000  = well beyond challenge dates
+    # --------------------------------------------------------
+
+    if not (
+        1
+        <=
+        serial
+        <=
+        80000
+    ):
+
+        return None
+
+
+    converted = pd.to_datetime(
+        serial,
+        unit="D",
+        origin="1899-12-30",
+        errors="coerce",
+    )
+
+
+    if pd.isna(
+        converted
+    ):
+
+        return None
+
+
+    return (
+        converted
+        .date()
+        .isoformat()
+    )
 
 
 # ============================================================
@@ -345,183 +582,142 @@ def normalize_boolean(value):
 
 def normalize_date(value):
     """
-    Normalize dates into:
+    Normalize dates to:
 
         YYYY-MM-DD
 
-
     Supports:
 
-        Python datetime objects
-        Python date objects
-        ordinary date strings
+        datetime
+        date
+        pandas Timestamp
         ISO date strings
-        Excel serial dates
-        Excel serial dates stored as strings
-
-
-    Examples:
-
-        "2025-09-22T00:00:00.000Z"
-            -> "2025-09-22"
-
-        44285
-            -> "2021-03-30"
-
-        "44285"
-            -> "2021-03-30"
+        ISO datetime strings
+        Excel serial numbers
+        Excel serial number strings
     """
 
-    value = normalize_empty(value)
+    value = normalize_empty(
+        value
+    )
 
 
     if value is None:
+
         return None
 
 
-    # ========================================================
-    # PYTHON DATETIME
-    # ========================================================
+    # --------------------------------------------------------
+    # DATETIME / DATE / TIMESTAMP
+    # --------------------------------------------------------
 
-    if isinstance(value, datetime):
-
-        return value.date().isoformat()
-
-
-    # ========================================================
-    # PYTHON DATE
-    # ========================================================
-
-    if isinstance(value, date):
-
-        return value.isoformat()
-
-
-    # ========================================================
-    # NUMERIC EXCEL SERIAL DATE
-    # ========================================================
-    #
-    # Excel stores dates internally as a number of days.
-    #
-    # Excel-compatible pandas origin:
-    #
-    #     1899-12-30
-    #
-    if (
-        isinstance(value, Number)
-        and not isinstance(value, bool)
+    if isinstance(
+        value,
+        (
+            datetime,
+            date,
+            pd.Timestamp,
+        ),
     ):
 
-        try:
-
-            number = float(value)
-
-
-            # A broad realistic range for Excel dates.
-            #
-            # This prevents random values such as 2025 from
-            # accidentally becoming dates.
-            #
-            if 20000 <= number <= 80000:
-
-                parsed_date = pd.to_datetime(
-                    number,
-                    unit="D",
-                    origin="1899-12-30",
-                )
-
-
-                return (
-                    parsed_date
-                    .date()
-                    .isoformat()
-                )
-
-
-        except (
-            ValueError,
-            TypeError,
-            OverflowError,
-        ):
-
-            pass
-
-
-    # ========================================================
-    # CONVERT TO TEXT
-    # ========================================================
-
-    text = str(value).strip()
-
-
-    # ========================================================
-    # EXCEL SERIAL DATE STORED AS TEXT
-    # ========================================================
-
-    if re.fullmatch(
-        r"\d+(\.0+)?",
-        text,
-    ):
-
-        try:
-
-            number = float(text)
-
-
-            if 20000 <= number <= 80000:
-
-                parsed_date = pd.to_datetime(
-                    number,
-                    unit="D",
-                    origin="1899-12-30",
-                )
-
-
-                return (
-                    parsed_date
-                    .date()
-                    .isoformat()
-                )
-
-
-        except (
-            ValueError,
-            TypeError,
-            OverflowError,
-        ):
-
-            pass
-
-
-    # ========================================================
-    # NORMAL DATE STRING
-    # ========================================================
-
-    try:
-
-        parsed_date = pd.to_datetime(
-            text,
-            errors="raise",
+        timestamp = pd.Timestamp(
+            value
         )
 
 
+        if pd.isna(
+            timestamp
+        ):
+
+            return None
+
+
         return (
-            parsed_date
+            timestamp
             .date()
             .isoformat()
         )
 
 
-    except (
-        ValueError,
-        TypeError,
-        OverflowError,
+    # --------------------------------------------------------
+    # NUMERIC EXCEL SERIAL
+    # --------------------------------------------------------
+
+    if (
+        isinstance(
+            value,
+            (int, float),
+        )
+        and not isinstance(
+            value,
+            bool,
+        )
     ):
 
-        # Unknown date.
-        #
-        # Do not invent a result.
+        excel_date = (
+            excel_serial_to_date(
+                value
+            )
+        )
+
+
+        if excel_date is not None:
+
+            return excel_date
+
+
+    # --------------------------------------------------------
+    # STRING
+    # --------------------------------------------------------
+
+    text = str(
+        value
+    ).strip()
+
+
+    # --------------------------------------------------------
+    # NUMERIC STRING MAY BE EXCEL SERIAL
+    # --------------------------------------------------------
+
+    if re.fullmatch(
+        r"\d+(?:\.0+)?",
+        text,
+    ):
+
+        excel_date = (
+            excel_serial_to_date(
+                text
+            )
+        )
+
+
+        if excel_date is not None:
+
+            return excel_date
+
+
+    # --------------------------------------------------------
+    # NORMAL DATE PARSING
+    # --------------------------------------------------------
+
+    converted = pd.to_datetime(
+        text,
+        errors="coerce",
+    )
+
+
+    if pd.isna(
+        converted
+    ):
+
         return None
+
+
+    return (
+        converted
+        .date()
+        .isoformat()
+    )
 
 
 # ============================================================
@@ -530,37 +726,38 @@ def normalize_date(value):
 
 def normalize_number(value):
     """
-    Normalize actual quantities into floats.
+    Normalize numeric values to float.
 
-    Examples:
-
-        40
-        40.0
-        "40"
-
-    become:
-
-        40.0
-
-    This should be used for quantities, not identifiers.
+    Missing / invalid values become None.
     """
 
-    value = normalize_empty(value)
+    value = normalize_empty(
+        value
+    )
 
 
     if value is None:
+
+        return None
+
+
+    if isinstance(
+        value,
+        bool,
+    ):
+
         return None
 
 
     try:
 
-        return float(value)
-
+        return float(
+            value
+        )
 
     except (
-        ValueError,
         TypeError,
-        OverflowError,
+        ValueError,
     ):
 
         return None

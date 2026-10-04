@@ -2,33 +2,6 @@
 # CORROBORIA
 # DETERMINISTIC BUSINESS RULE ENGINE
 # ============================================================
-#
-# PURPOSE
-#
-# Calculate the EXPECTED System B values for fields whose
-# mapping is governed by deterministic business rules.
-#
-#
-# IMPORTANT:
-#
-#     Rules run BEFORE AI.
-#
-#     AI must not override a deterministic rule.
-#
-#
-# OUTPUT VERDICTS
-#
-#     CONFORME
-#         Destination matches the deterministic expectation.
-#
-#     ANOMALIE
-#         The deterministic expected value is known and the
-#         destination value does not match.
-#
-#     A_INVESTIGUER
-#         CorroborIA cannot safely derive the expected value.
-#
-# ============================================================
 
 
 # ============================================================
@@ -46,6 +19,10 @@ from corroboria.comparator import (
     values_equal,
 )
 
+from corroboria.normalizer import (
+    normalize_text,
+)
+
 
 # ============================================================
 # GENERAL HELPERS
@@ -56,92 +33,146 @@ def display_value(value) -> str:
     Human-readable representation for explanations.
     """
 
-    if is_missing(value):
+    if is_missing(
+        value
+    ):
+
         return "<VIDE>"
 
-    return repr(value)
+
+    return repr(
+        value
+    )
 
 
 def clean_text(value):
     """
-    Return stripped text or None.
+    Normalize text used by business rules.
     """
 
-    if is_missing(value):
-        return None
-
-    return str(value).strip()
+    return normalize_text(
+        value
+    )
 
 
 def remove_accents(value):
     """
     Remove accents from text.
 
-    Example:
-
-        Élodie -> Elodie
+    Mapping rule specifically requires this for names used
+    to construct the employee email.
     """
 
-    text = clean_text(value)
+    text = clean_text(
+        value
+    )
+
 
     if text is None:
+
         return None
 
-    normalized = unicodedata.normalize(
+
+    decomposed = unicodedata.normalize(
         "NFKD",
         text,
     )
 
+
     return "".join(
         character
-        for character in normalized
-        if not unicodedata.combining(character)
+        for character in decomposed
+        if not unicodedata.combining(
+            character
+        )
     )
 
 
 def canonical_access_code(value):
     """
-    Normalize access/status codes to two digits.
+    Normalize employment-access codes to two digits.
 
     Examples:
 
-        0  -> "00"
-        1  -> "01"
-        2  -> "02"
-        7  -> "07"
-
-    This is necessary because Excel may remove leading zeros.
+        0 -> 00
+        1 -> 01
+        2 -> 02
+        7 -> 07
     """
 
-    if is_missing(value):
+    if is_missing(
+        value
+    ):
+
         return None
 
-    text = str(value).strip()
 
-    if text.endswith(".0"):
+    text = str(
+        value
+    ).strip()
 
-        possible_number = text[:-2]
 
-        if possible_number.isdigit():
-            text = possible_number
+    if text.endswith(
+        ".0"
+    ):
+
+        possible_integer = (
+            text[:-2]
+        )
+
+
+        if possible_integer.isdigit():
+
+            text = (
+                possible_integer
+            )
+
 
     if text.isdigit():
 
-        return text.zfill(2)
+        return text.zfill(
+            2
+        )
+
 
     return text
 
 
-def normalize_rule_string(value):
+def format_admin_code(value):
     """
-    Normalize a string used for deterministic comparisons.
+    Format administrative-unit code for display names.
+
+    System B uses five-character administrative codes:
+
+        397 -> 00397
+        48  -> 00048
+
+    Existing five-digit values remain unchanged.
     """
 
-    if is_missing(value):
+    text = clean_text(
+        value
+    )
+
+
+    if text is None:
+
         return None
 
-    return str(value).strip()
 
+    if text.isdigit():
+
+        return text.zfill(
+            5
+        )
+
+
+    return text
+
+
+# ============================================================
+# BUSINESS RULE VALUE COMPARISON
+# ============================================================
 
 def rule_values_equal(
     destination_field,
@@ -149,32 +180,103 @@ def rule_values_equal(
     actual_value,
 ):
     """
-    Compare an expected rule result with System B.
+    Compare deterministic expected value with destination.
+
+    Text is normalized before comparison.
 
     Email comparison is case-insensitive.
     """
 
+    # ========================================================
+    # BOTH MISSING
+    # ========================================================
+
+    if (
+        is_missing(
+            expected_value
+        )
+        and
+        is_missing(
+            actual_value
+        )
+    ):
+
+        return True
+
+
+    # ========================================================
+    # ONLY ONE MISSING
+    # ========================================================
+
+    if (
+        is_missing(
+            expected_value
+        )
+        !=
+        is_missing(
+            actual_value
+        )
+    ):
+
+        return False
+
+
+    # ========================================================
+    # EMAIL
+    # ========================================================
+
     if destination_field == "contactEmail":
 
-        expected_missing = is_missing(
+        expected_text = clean_text(
             expected_value
         )
 
-        actual_missing = is_missing(
+        actual_text = clean_text(
             actual_value
         )
 
-        if expected_missing and actual_missing:
-            return True
-
-        if expected_missing != actual_missing:
-            return False
 
         return (
-            str(expected_value).strip().casefold()
+            expected_text.casefold()
             ==
-            str(actual_value).strip().casefold()
+            actual_text.casefold()
         )
+
+
+    # ========================================================
+    # TEXT FIELDS
+    # ========================================================
+
+    text_fields = {
+        "divisionName",
+        "positionName",
+        "detailedStatus",
+        "contractTypeCode",
+        "statusReasonCode",
+    }
+
+
+    if destination_field in text_fields:
+
+        expected_text = clean_text(
+            expected_value
+        )
+
+        actual_text = clean_text(
+            actual_value
+        )
+
+
+        return (
+            expected_text
+            ==
+            actual_text
+        )
+
+
+    # ========================================================
+    # OTHER VALUES
+    # ========================================================
 
     return values_equal(
         expected_value,
@@ -193,15 +295,15 @@ def build_expected_email(
     """
     Mapping rule:
 
-        first letter of first name
+        First letter of first name
         +
         surname
         +
-        last 3 digits of employee code
+        last three digits of employee code
         +
         @loto-quebec.com
 
-    Accents are removed from first and last names.
+    Accents must be removed from first / last names.
     """
 
     first_name = remove_accents(
@@ -210,17 +312,31 @@ def build_expected_email(
         )
     )
 
+
     last_name = remove_accents(
         source_row.get(
             "NomFamille"
         )
     )
 
+
     employee_id = clean_text(
         source_row.get(
             "Matricule"
         )
     )
+
+
+    inputs = {
+        "PrénomUsuel":
+            first_name,
+
+        "NomFamille":
+            last_name,
+
+        "Matricule":
+            employee_id,
+    }
 
 
     if (
@@ -236,41 +352,33 @@ def build_expected_email(
                 "PrénomUsuel, NomFamille ou Matricule "
                 "manquant."
             ),
-            "inputs": {
-                "PrénomUsuel":
-                    source_row.get("PrénomUsuel"),
-
-                "NomFamille":
-                    source_row.get("NomFamille"),
-
-                "Matricule":
-                    source_row.get("Matricule"),
-            },
+            "inputs": inputs,
         }
 
 
-    if len(employee_id) < 3:
+    if len(
+        employee_id
+    ) < 3:
 
         return {
             "resolved": False,
             "expected": None,
             "reason": (
-                "Le Matricule contient moins de "
-                "trois caractères."
+                "Le Matricule contient moins de trois "
+                "caractères."
             ),
-            "inputs": {
-                "PrénomUsuel": first_name,
-                "NomFamille": last_name,
-                "Matricule": employee_id,
-            },
+            "inputs": inputs,
         }
 
 
     expected = (
         first_name[0]
-        + last_name
-        + employee_id[-3:]
-        + "@loto-quebec.com"
+        +
+        last_name
+        +
+        employee_id[-3:]
+        +
+        "@loto-quebec.com"
     )
 
 
@@ -278,11 +386,7 @@ def build_expected_email(
         "resolved": True,
         "expected": expected,
         "reason": None,
-        "inputs": {
-            "PrénomUsuel": first_name,
-            "NomFamille": last_name,
-            "Matricule": employee_id,
-        },
+        "inputs": inputs,
     }
 
 
@@ -303,23 +407,44 @@ def build_expected_division_name(
         +
         Unité adm. desc
 
-    Interpreted using:
+    Source interpretation:
 
         CodeDirection
         LibelléDirection
+
+    Administrative code is rendered on five digits because
+    that is the destination representation.
     """
 
-    code = clean_text(
+    raw_code = clean_text(
         source_row.get(
             "CodeDirection"
         )
     )
+
 
     description = clean_text(
         source_row.get(
             "LibelléDirection"
         )
     )
+
+
+    code = format_admin_code(
+        raw_code
+    )
+
+
+    inputs = {
+        "CodeDirection":
+            raw_code,
+
+        "CodeDirectionFormatted":
+            code,
+
+        "LibelléDirection":
+            description,
+    }
 
 
     if (
@@ -334,23 +459,19 @@ def build_expected_division_name(
                 "CodeDirection ou LibelléDirection "
                 "manquant."
             ),
-            "inputs": {
-                "CodeDirection": code,
-                "LibelléDirection": description,
-            },
+            "inputs": inputs,
         }
 
 
     return {
         "resolved": True,
-        "expected": (
-            f"{code}-{description}"
-        ),
+
+        "expected":
+            f"{code}-{description}",
+
         "reason": None,
-        "inputs": {
-            "CodeDirection": code,
-            "LibelléDirection": description,
-        },
+
+        "inputs": inputs,
     }
 
 
@@ -370,6 +491,20 @@ def build_expected_position_name(
         "-"
         +
         Emploi desc
+
+    According to Mapping.xlsx:
+
+        CodeEmploi
+        IntituléEmploi
+
+    IMPORTANT:
+
+    We intentionally DO NOT alter this rule to imitate the
+    destination data.
+
+    If destination positionName disagrees while positionId
+    and positionCode agree with CodeEmploi, that disagreement
+    remains visible.
     """
 
     code = clean_text(
@@ -378,11 +513,21 @@ def build_expected_position_name(
         )
     )
 
+
     description = clean_text(
         source_row.get(
             "IntituléEmploi"
         )
     )
+
+
+    inputs = {
+        "CodeEmploi":
+            code,
+
+        "IntituléEmploi":
+            description,
+    }
 
 
     if (
@@ -397,23 +542,19 @@ def build_expected_position_name(
                 "CodeEmploi ou IntituléEmploi "
                 "manquant."
             ),
-            "inputs": {
-                "CodeEmploi": code,
-                "IntituléEmploi": description,
-            },
+            "inputs": inputs,
         }
 
 
     return {
         "resolved": True,
-        "expected": (
-            f"{code}-{description}"
-        ),
+
+        "expected":
+            f"{code}-{description}",
+
         "reason": None,
-        "inputs": {
-            "CodeEmploi": code,
-            "IntituléEmploi": description,
-        },
+
+        "inputs": inputs,
     }
 
 
@@ -428,9 +569,11 @@ def derive_contract_type(
     """
     Mapping rules:
 
-        V + permanent + full-time -> JWN
+        V + permanent + full-time
+            -> JWN
 
-        V + permanent + part-time -> XFLR
+        V + permanent + part-time
+            -> XFLR
 
         T -> KELH
         O -> WHX
@@ -447,13 +590,27 @@ def derive_contract_type(
         )
     )
 
+
     permanent = source_row.get(
         "EstPermanent"
     )
 
+
     full_time = source_row.get(
         "EstTempsPlein"
     )
+
+
+    inputs = {
+        "CatégorieEmploi":
+            category,
+
+        "EstPermanent":
+            permanent,
+
+        "EstTempsPlein":
+            full_time,
+    }
 
 
     if category is None:
@@ -464,25 +621,43 @@ def derive_contract_type(
             "reason": (
                 "CatégorieEmploi manquante."
             ),
-            "inputs": {
-                "CatégorieEmploi": category,
-                "EstPermanent": permanent,
-                "EstTempsPlein": full_time,
-            },
+            "inputs": inputs,
         }
 
 
-    category = category.upper()
+    category = (
+        category
+        .upper()
+    )
+
+
+    inputs[
+        "CatégorieEmploi"
+    ] = category
 
 
     simple_mapping = {
-        "T": "KELH",
-        "O": "WHX",
-        "M": "CEGQ",
-        "R": "CNZC",
-        "J": "RMQ",
-        "Z": "JAW",
-        "Q": "TRSY",
+
+        "T":
+            "KELH",
+
+        "O":
+            "WHX",
+
+        "M":
+            "CEGQ",
+
+        "R":
+            "CNZC",
+
+        "J":
+            "RMQ",
+
+        "Z":
+            "JAW",
+
+        "Q":
+            "TRSY",
     }
 
 
@@ -490,24 +665,32 @@ def derive_contract_type(
 
         return {
             "resolved": True,
+
             "expected":
                 simple_mapping[
                     category
                 ],
+
             "reason": None,
-            "inputs": {
-                "CatégorieEmploi": category,
-                "EstPermanent": permanent,
-                "EstTempsPlein": full_time,
-            },
+
+            "inputs": inputs,
         }
 
+
+    # ========================================================
+    # CATEGORY V
+    # ========================================================
 
     if category == "V":
 
         if (
-            is_missing(permanent)
-            or is_missing(full_time)
+            is_missing(
+                permanent
+            )
+            or
+            is_missing(
+                full_time
+            )
         ):
 
             return {
@@ -517,11 +700,7 @@ def derive_contract_type(
                     "EstPermanent ou EstTempsPlein "
                     "manquant pour CatégorieEmploi V."
                 ),
-                "inputs": {
-                    "CatégorieEmploi": category,
-                    "EstPermanent": permanent,
-                    "EstTempsPlein": full_time,
-                },
+                "inputs": inputs,
             }
 
 
@@ -534,20 +713,35 @@ def derive_contract_type(
         )
 
 
+        inputs[
+            "EstPermanent"
+        ] = permanent_bool
+
+        inputs[
+            "EstTempsPlein"
+        ] = full_time_bool
+
+
         if (
             permanent_bool
-            and full_time_bool
+            and
+            full_time_bool
         ):
 
-            expected = "JWN"
+            expected = (
+                "JWN"
+            )
 
 
         elif (
             permanent_bool
-            and not full_time_bool
+            and
+            not full_time_bool
         ):
 
-            expected = "XFLR"
+            expected = (
+                "XFLR"
+            )
 
 
         else:
@@ -556,15 +750,11 @@ def derive_contract_type(
                 "resolved": False,
                 "expected": None,
                 "reason": (
-                    "La combinaison CatégorieEmploi V / "
-                    "EstPermanent / EstTempsPlein n'est pas "
-                    "définie dans le mapping."
+                    "Combinaison CatégorieEmploi V / "
+                    "EstPermanent / EstTempsPlein non "
+                    "définie par le mapping."
                 ),
-                "inputs": {
-                    "CatégorieEmploi": category,
-                    "EstPermanent": permanent_bool,
-                    "EstTempsPlein": full_time_bool,
-                },
+                "inputs": inputs,
             }
 
 
@@ -572,26 +762,21 @@ def derive_contract_type(
             "resolved": True,
             "expected": expected,
             "reason": None,
-            "inputs": {
-                "CatégorieEmploi": category,
-                "EstPermanent": permanent_bool,
-                "EstTempsPlein": full_time_bool,
-            },
+            "inputs": inputs,
         }
 
 
     return {
         "resolved": False,
+
         "expected": None,
+
         "reason": (
             f"CatégorieEmploi '{category}' "
-            "non définie dans le mapping."
+            f"non définie par le mapping."
         ),
-        "inputs": {
-            "CatégorieEmploi": category,
-            "EstPermanent": permanent,
-            "EstTempsPlein": full_time,
-        },
+
+        "inputs": inputs,
     }
 
 
@@ -604,19 +789,19 @@ def derive_assignment_flags(
     source_row: pd.Series
 ):
     """
-    Mapping rules:
+    Mapping:
 
-        P:
-            primary = True
-            temporary = False
+        P
+            primary=True
+            temporary=False
 
-        A:
-            primary = False
-            temporary = True
+        A
+            primary=False
+            temporary=True
 
-        S:
-            primary = False
-            temporary = False
+        S
+            primary=False
+            temporary=False
     """
 
     assignment_type = clean_text(
@@ -642,25 +827,30 @@ def derive_assignment_flags(
 
 
     assignment_type = (
-        assignment_type.upper()
+        assignment_type
+        .upper()
     )
 
 
     mapping = {
-        "P": (
-            True,
-            False,
-        ),
 
-        "A": (
-            False,
-            True,
-        ),
+        "P":
+            (
+                True,
+                False,
+            ),
 
-        "S": (
-            False,
-            False,
-        ),
+        "A":
+            (
+                False,
+                True,
+            ),
+
+        "S":
+            (
+                False,
+                False,
+            ),
     }
 
 
@@ -681,18 +871,25 @@ def derive_assignment_flags(
         }
 
 
-    primary, temporary = (
-        mapping[
-            assignment_type
-        ]
-    )
+    (
+        primary,
+        temporary,
+    ) = mapping[
+        assignment_type
+    ]
 
 
     return {
         "resolved": True,
-        "primary": primary,
-        "temporary": temporary,
+
+        "primary":
+            primary,
+
+        "temporary":
+            temporary,
+
         "reason": None,
+
         "inputs": {
             "TypeAffectation":
                 assignment_type,
@@ -701,18 +898,23 @@ def derive_assignment_flags(
 
 
 # ============================================================
-# EMPLOYMENT STATUS RULE TABLE
+# EMPLOYMENT STATUS
 # ============================================================
 
 def clean_specific_status(value):
     """
-    Remove optional quotes around status text.
+    Clean quoted status text from mapping rule table.
     """
 
-    text = clean_text(value)
+    text = clean_text(
+        value
+    )
+
 
     if text is None:
+
         return None
+
 
     return text.strip(
         "\"'"
@@ -724,15 +926,19 @@ def find_employment_status_rule(
     employment_rules_df: pd.DataFrame,
 ):
     """
-    Find the rule row associated with a CodeSuspensionAccès.
+    Find the employment-status rule matching the source
+    access code.
     """
 
-    canonical_code = canonical_access_code(
-        access_code
+    canonical_code = (
+        canonical_access_code(
+            access_code
+        )
     )
 
 
     if canonical_code is None:
+
         return None
 
 
@@ -746,14 +952,20 @@ def find_employment_status_rule(
 
 
         if rule_codes is None:
+
             continue
 
 
         codes = [
+
             canonical_access_code(
-                code.strip()
+                item.strip()
             )
-            for code in rule_codes.split(",")
+
+            for item
+            in rule_codes.split(
+                ","
+            )
         ]
 
 
@@ -765,25 +977,26 @@ def find_employment_status_rule(
     return None
 
 
+# ============================================================
+# EMPLOYMENT REASON LOOKUP
+# ============================================================
+
 def lookup_external_status_reason(
     source_row: pd.Series,
     employment_reasons_df: pd.DataFrame,
 ):
     """
-    Join:
+    Join source employment reason with supporting lookup.
 
-        Source CodeRaisonStatut
-            ↔
+    Source:
+
+        CodeRaisonStatut
+        CodeSuspensionAccès
+
+    Lookup:
+
         CodeCatégorieStatut
-
-    and:
-
-        Source CodeSuspensionAccès
-            ↔
         CodeGestionAccès
-
-    Then return:
-
         CodeStatutSystèmeExterne
     """
 
@@ -793,9 +1006,12 @@ def lookup_external_status_reason(
         )
     )
 
-    access_code = canonical_access_code(
-        source_row.get(
-            "CodeSuspensionAccès"
+
+    access_code = (
+        canonical_access_code(
+            source_row.get(
+                "CodeSuspensionAccès"
+            )
         )
     )
 
@@ -811,21 +1027,36 @@ def lookup_external_status_reason(
         }
 
 
-    candidates = employment_reasons_df[
+    candidates = (
         employment_reasons_df[
-            "CodeCatégorieStatut"
-        ].astype(str) == reason_code
-    ].copy()
+            employment_reasons_df[
+                "CodeCatégorieStatut"
+            ].astype(
+                str
+            )
+            ==
+            reason_code
+        ]
+        .copy()
+    )
 
+
+    # --------------------------------------------------------
+    # ACCESS CODE IS AN ADDITIONAL JOIN CONDITION
+    # --------------------------------------------------------
 
     if access_code is not None:
 
         candidates = candidates[
+
             candidates[
                 "CodeGestionAccès"
             ].apply(
                 canonical_access_code
-            ) == access_code
+            )
+            ==
+            access_code
+
         ]
 
 
@@ -842,17 +1073,23 @@ def lookup_external_status_reason(
 
 
     values = (
+
         candidates[
             "CodeStatutSystèmeExterne"
         ]
         .dropna()
-        .astype(str)
+        .astype(
+            str
+        )
         .unique()
         .tolist()
+
     )
 
 
-    if len(values) != 1:
+    if len(
+        values
+    ) != 1:
 
         return {
             "resolved": False,
@@ -871,6 +1108,10 @@ def lookup_external_status_reason(
     }
 
 
+# ============================================================
+# DERIVE EMPLOYMENT STATUS
+# ============================================================
+
 def derive_employment_status(
     source_row: pd.Series,
     employment_rules_df: pd.DataFrame,
@@ -884,14 +1125,17 @@ def derive_employment_status(
         expectedReturnDate
     """
 
-    access_code = canonical_access_code(
-        source_row.get(
-            "CodeSuspensionAccès"
+    access_code = (
+        canonical_access_code(
+            source_row.get(
+                "CodeSuspensionAccès"
+            )
         )
     )
 
 
     rule = find_employment_status_rule(
+
         access_code=
             access_code,
 
@@ -900,65 +1144,90 @@ def derive_employment_status(
     )
 
 
+    inputs = {
+
+        "CodeSuspensionAccès":
+            access_code,
+
+        "CodeRaisonStatut":
+            source_row.get(
+                "CodeRaisonStatut"
+            ),
+
+        "DateRetourAnticipée":
+            source_row.get(
+                "DateRetourAnticipée"
+            ),
+    }
+
+
     if rule is None:
 
         return {
             "resolved": False,
+
             "reason": (
                 f"Aucune règle de situation d'emploi "
                 f"pour CodeSuspensionAccès "
                 f"{display_value(access_code)}."
             ),
-            "detailedStatus": None,
-            "statusReasonCode": None,
-            "expectedReturnDate": None,
-            "inputs": {
-                "CodeSuspensionAccès":
-                    access_code,
 
-                "CodeRaisonStatut":
-                    source_row.get(
-                        "CodeRaisonStatut"
-                    ),
+            "detailedStatus":
+                None,
 
-                "DateRetourAnticipée":
-                    source_row.get(
-                        "DateRetourAnticipée"
-                    ),
-            },
+            "statusReasonCode":
+                None,
+
+            "expectedReturnDate":
+                None,
+
+            "inputs":
+                inputs,
         }
 
 
-    detailed_status = clean_specific_status(
-        rule.get(
-            "specific_status"
+    # ========================================================
+    # DETAILED STATUS
+    # ========================================================
+
+    detailed_status = (
+        clean_specific_status(
+            rule.get(
+                "specific_status"
+            )
         )
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # STATUS REASON
-    # --------------------------------------------------------
+    # ========================================================
 
     cad_rule = rule.get(
         "cad_rule"
     )
 
 
-    if is_missing(cad_rule):
+    if is_missing(
+        cad_rule
+    ):
 
-        status_reason = None
+        status_reason = (
+            None
+        )
 
 
     else:
 
-        lookup = lookup_external_status_reason(
+        lookup = (
+            lookup_external_status_reason(
 
-            source_row=
-                source_row,
+                source_row=
+                    source_row,
 
-            employment_reasons_df=
-                employment_reasons_df,
+                employment_reasons_df=
+                    employment_reasons_df,
+            )
         )
 
 
@@ -968,10 +1237,12 @@ def derive_employment_status(
 
             return {
                 "resolved": False,
+
                 "reason":
                     lookup[
                         "reason"
                     ],
+
                 "detailedStatus":
                     detailed_status,
 
@@ -981,20 +1252,8 @@ def derive_employment_status(
                 "expectedReturnDate":
                     None,
 
-                "inputs": {
-                    "CodeSuspensionAccès":
-                        access_code,
-
-                    "CodeRaisonStatut":
-                        source_row.get(
-                            "CodeRaisonStatut"
-                        ),
-
-                    "DateRetourAnticipée":
-                        source_row.get(
-                            "DateRetourAnticipée"
-                        ),
-                },
+                "inputs":
+                    inputs,
             }
 
 
@@ -1005,18 +1264,23 @@ def derive_employment_status(
         )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # EXPECTED RETURN DATE
-    # --------------------------------------------------------
+    # ========================================================
 
     cadp_rule = rule.get(
         "cadp_rule"
     )
 
 
-    if is_missing(cadp_rule):
+    if is_missing(
+        cadp_rule
+    ):
 
-        expected_return = None
+        expected_return = (
+            None
+        )
+
 
     else:
 
@@ -1029,7 +1293,9 @@ def derive_employment_status(
 
     return {
         "resolved": True,
+
         "reason": None,
+
         "detailedStatus":
             detailed_status,
 
@@ -1039,55 +1305,57 @@ def derive_employment_status(
         "expectedReturnDate":
             expected_return,
 
-        "inputs": {
-            "CodeSuspensionAccès":
-                access_code,
-
-            "CodeRaisonStatut":
-                source_row.get(
-                    "CodeRaisonStatut"
-                ),
-
-            "DateRetourAnticipée":
-                source_row.get(
-                    "DateRetourAnticipée"
-                ),
-        },
+        "inputs":
+            inputs,
     }
 
 
 # ============================================================
-# JOB HISTORY DATE HELPERS
+# DATE HELPERS
 # ============================================================
 
 def to_timestamp(value):
     """
-    Convert normalized date values to pandas Timestamp.
+    Convert normalized ISO date to pandas Timestamp.
     """
 
-    if is_missing(value):
+    if is_missing(
+        value
+    ):
+
         return None
+
 
     converted = pd.to_datetime(
         value,
         errors="coerce",
     )
 
-    if pd.isna(converted):
+
+    if pd.isna(
+        converted
+    ):
+
         return None
 
-    return pd.Timestamp(
-        converted
-    ).normalize()
+
+    return (
+        pd.Timestamp(
+            converted
+        )
+        .normalize()
+    )
 
 
 def timestamp_to_iso(value):
     """
-    Convert Timestamp to YYYY-MM-DD.
+    Convert timestamp to YYYY-MM-DD.
     """
 
     if value is None:
+
         return None
+
 
     return value.strftime(
         "%Y-%m-%d"
@@ -1098,34 +1366,47 @@ def minimum_date(
     *values,
 ):
     """
-    Return earliest valid date as ISO text.
+    Return earliest valid date from supplied values.
     """
 
     parsed = [
+
         to_timestamp(
             value
         )
-        for value in values
+
+        for value
+        in values
+
     ]
 
+
     parsed = [
+
         value
-        for value in parsed
+
+        for value
+        in parsed
+
         if value is not None
+
     ]
 
 
     if not parsed:
+
         return None
 
 
     return timestamp_to_iso(
-        min(parsed)
+        min(
+            parsed
+        )
     )
 
 
 # ============================================================
-# JOB HISTORY PERIOD
+# JOB HISTORY
 # ============================================================
 
 def find_admin_unit_period(
@@ -1133,19 +1414,31 @@ def find_admin_unit_period(
     job_details_df: pd.DataFrame,
 ):
     """
-    Find when the current administrative unit became effective
-    and, when applicable, when it ended.
+    Determine the effective period of the employee's CURRENT
+    administrative unit using the Détail du poste history.
 
-    Matching keys from the supplied join definition:
+    Official mapping logic:
 
-        CodePoste
-            ↔ IdentifiantPoste
+        use the position number
 
-        CodeEmploi
-            ↔ IdentifiantEmploi
+        detect when current CodeDirection became applicable
 
-        CodeDirection
-            ↔ CodeDirectionAffectée
+        compare each history record with previous record
+
+        if there has never been an administrative-unit change,
+        use the oldest effective date
+
+        unit ends on next detail date - 1 day ONLY if the next
+        detail has a different administrative-unit code
+
+
+    IMPORTANT CHANGE:
+
+    The history is selected by POSITION first.
+
+    We no longer require IdentifiantEmploi == CodeEmploi to
+    retrieve the position history because the business rule
+    explicitly describes the lookup through the position.
     """
 
     position = clean_text(
@@ -1154,11 +1447,13 @@ def find_admin_unit_period(
         )
     )
 
+
     employment = clean_text(
         source_row.get(
             "CodeEmploi"
         )
     )
+
 
     direction = clean_text(
         source_row.get(
@@ -1167,9 +1462,21 @@ def find_admin_unit_period(
     )
 
 
+    inputs = {
+
+        "CodePoste":
+            position,
+
+        "CodeEmploi":
+            employment,
+
+        "CodeDirection":
+            direction,
+    }
+
+
     if (
         position is None
-        or employment is None
         or direction is None
     ):
 
@@ -1178,26 +1485,34 @@ def find_admin_unit_period(
             "start": None,
             "end": None,
             "reason": (
-                "CodePoste, CodeEmploi ou CodeDirection "
-                "manquant."
+                "CodePoste ou CodeDirection manquant."
             ),
             "history_rows": [],
+            "inputs": inputs,
         }
 
 
-    history = job_details_df[
-        (
+    # ========================================================
+    # POSITION HISTORY
+    # ========================================================
+
+    history = (
+
+        job_details_df[
+
             job_details_df[
                 "IdentifiantPoste"
-            ].astype(str) == position
-        )
-        &
-        (
-            job_details_df[
-                "IdentifiantEmploi"
-            ].astype(str) == employment
-        )
-    ].copy()
+            ].astype(
+                str
+            )
+            ==
+            position
+
+        ]
+
+        .copy()
+
+    )
 
 
     if history.empty:
@@ -1208,34 +1523,55 @@ def find_admin_unit_period(
             "end": None,
             "reason": (
                 "Aucun historique Détail du poste trouvé "
-                "pour CodePoste + CodeEmploi."
+                "pour le CodePoste."
             ),
             "history_rows": [],
+            "inputs": inputs,
         }
 
 
+    # ========================================================
+    # PARSE EFFECTIVE DATES
+    # ========================================================
+
     history[
         "_date"
-    ] = history[
-        "DateEffetAffectation"
-    ].apply(
-        to_timestamp
+    ] = (
+
+        history[
+            "DateEffetAffectation"
+        ]
+
+        .apply(
+            to_timestamp
+        )
+
     )
 
 
-    history = history[
+    history = (
+
         history[
-            "_date"
-        ].notna()
-    ].copy()
+            history[
+                "_date"
+            ].notna()
+        ]
+
+        .copy()
+
+    )
 
 
     history = (
+
         history
+
         .sort_values(
             by="_date"
         )
+
         .reset_index()
+
     )
 
 
@@ -1246,30 +1582,50 @@ def find_admin_unit_period(
             "start": None,
             "end": None,
             "reason": (
-                "L'historique Détail du poste ne contient "
-                "aucune DateEffetAffectation exploitable."
+                "L'historique du poste ne contient aucune "
+                "DateEffetAffectation exploitable."
             ),
             "history_rows": [],
+            "inputs": inputs,
         }
 
 
-    matching_positions = []
+    # ========================================================
+    # NORMALIZE DIRECTIONS FOR HISTORY
+    # ========================================================
 
+    history[
+        "_direction"
+    ] = (
 
-    for position_index, row in history.iterrows():
+        history[
+            "CodeDirectionAffectée"
+        ]
 
-        row_direction = clean_text(
-            row.get(
-                "CodeDirectionAffectée"
-            )
+        .apply(
+            clean_text
         )
 
+    )
 
-        if row_direction == direction:
 
-            matching_positions.append(
-                position_index
-            )
+    # ========================================================
+    # FIND CURRENT DIRECTION OCCURRENCES
+    # ========================================================
+
+    matching_positions = (
+
+        history.index[
+            history[
+                "_direction"
+            ]
+            ==
+            direction
+        ]
+
+        .tolist()
+
+    )
 
 
     if not matching_positions:
@@ -1279,56 +1635,84 @@ def find_admin_unit_period(
             "start": None,
             "end": None,
             "reason": (
-                "Le CodeDirection courant n'est pas trouvé "
-                "dans l'historique du poste."
+                "Le CodeDirection courant n'est pas présent "
+                "dans l'historique du CodePoste."
             ),
             "history_rows":
                 history[
                     "index"
                 ].tolist(),
+            "inputs": inputs,
         }
 
 
-    # --------------------------------------------------------
-    # Use latest occurrence of the CURRENT direction.
+    # ========================================================
+    # CURRENT OCCURRENCE
     #
-    # Then walk backward to find when this contiguous period
-    # began.
-    # --------------------------------------------------------
+    # The current unit corresponds to the most recent history
+    # occurrence of the source's current direction.
+    # ========================================================
 
     current_position = max(
         matching_positions
     )
 
 
+    # ========================================================
+    # WALK BACKWARD THROUGH SAME UNIT
+    #
+    # This identifies the first effective date of the current
+    # contiguous administrative-unit period.
+    # ========================================================
+
     start_position = (
         current_position
     )
 
 
-    while start_position > 0:
+    while (
+        start_position
+        >
+        0
+    ):
 
-        previous_direction = clean_text(
+        previous_direction = (
 
             history.iloc[
                 start_position - 1
-            ].get(
-                "CodeDirectionAffectée"
-            )
+            ][
+                "_direction"
+            ]
 
         )
 
 
-        if previous_direction != direction:
+        if (
+            previous_direction
+            !=
+            direction
+        ):
+
             break
 
 
         start_position -= 1
 
 
-    # --------------------------------------------------------
-    # Walk forward through same administrative unit.
-    # --------------------------------------------------------
+    admin_start = (
+
+        history.iloc[
+            start_position
+        ][
+            "_date"
+        ]
+
+    )
+
+
+    # ========================================================
+    # WALK FORWARD THROUGH SAME UNIT
+    # ========================================================
 
     end_position = (
         current_position
@@ -1338,42 +1722,39 @@ def find_admin_unit_period(
     while (
         end_position + 1
         <
-        len(history)
+        len(
+            history
+        )
     ):
 
-        next_direction = clean_text(
+        next_direction = (
 
             history.iloc[
                 end_position + 1
-            ].get(
-                "CodeDirectionAffectée"
-            )
+            ][
+                "_direction"
+            ]
 
         )
 
 
-        if next_direction != direction:
+        if (
+            next_direction
+            !=
+            direction
+        ):
+
             break
 
 
         end_position += 1
 
 
-    admin_start = (
-        history.iloc[
-            start_position
-        ][
-            "_date"
-        ]
-    )
-
-
-    # --------------------------------------------------------
-    # ADMIN END
+    # ========================================================
+    # ADMINISTRATIVE UNIT END
     #
-    # Next detail date - 1 day ONLY if next detail changes
-    # administrative unit.
-    # --------------------------------------------------------
+    # next different unit's effective date - 1 day
+    # ========================================================
 
     admin_end = None
 
@@ -1383,22 +1764,35 @@ def find_admin_unit_period(
     )
 
 
-    if next_position < len(history):
+    if (
+        next_position
+        <
+        len(
+            history
+        )
+    ):
 
         next_row = (
+
             history.iloc[
                 next_position
             ]
-        )
 
-        next_direction = clean_text(
-            next_row.get(
-                "CodeDirectionAffectée"
-            )
         )
 
 
-        if next_direction != direction:
+        next_direction = (
+            next_row[
+                "_direction"
+            ]
+        )
+
+
+        if (
+            next_direction
+            !=
+            direction
+        ):
 
             next_date = (
                 next_row[
@@ -1406,11 +1800,16 @@ def find_admin_unit_period(
                 ]
             )
 
+
             admin_end = (
+
                 next_date
-                - timedelta(
+
+                -
+                timedelta(
                     days=1
                 )
+
             )
 
 
@@ -1427,12 +1826,16 @@ def find_admin_unit_period(
                 admin_end
             ),
 
-        "reason": None,
+        "reason":
+            None,
 
         "history_rows":
             history[
                 "index"
             ].tolist(),
+
+        "inputs":
+            inputs,
     }
 
 
@@ -1450,6 +1853,8 @@ def derive_assignment_dates(
         assignmentStartDate
         assignmentEndDate
         termEndDate
+
+    according to Mapping.xlsx.
     """
 
     period = find_admin_unit_period(
@@ -1468,13 +1873,21 @@ def derive_assignment_dates(
 
         return {
             "resolved": False,
-            "assignmentStartDate": None,
-            "assignmentEndDate": None,
-            "termEndDate": None,
+
+            "assignmentStartDate":
+                None,
+
+            "assignmentEndDate":
+                None,
+
+            "termEndDate":
+                None,
+
             "reason":
                 period[
                     "reason"
                 ],
+
             "inputs": {
                 "DateEntréePoste":
                     source_row.get(
@@ -1486,23 +1899,22 @@ def derive_assignment_dates(
                         "DateSortiePoste"
                     ),
 
-                "CodePoste":
-                    source_row.get(
-                        "CodePoste"
-                    ),
-
-                "CodeEmploi":
-                    source_row.get(
-                        "CodeEmploi"
-                    ),
-
-                "CodeDirection":
-                    source_row.get(
-                        "CodeDirection"
-                    ),
+                **period.get(
+                    "inputs",
+                    {},
+                ),
             },
         }
 
+
+    # ========================================================
+    # START
+    #
+    # Earliest of:
+    #
+    #   DateEntréePoste
+    #   current administrative-unit effective date
+    # ========================================================
 
     assignment_start = minimum_date(
 
@@ -1516,6 +1928,15 @@ def derive_assignment_dates(
     )
 
 
+    # ========================================================
+    # END
+    #
+    # Earliest of:
+    #
+    #   DateSortiePoste
+    #   current administrative-unit end date
+    # ========================================================
+
     assignment_end = minimum_date(
 
         source_row.get(
@@ -1528,8 +1949,10 @@ def derive_assignment_dates(
     )
 
 
-    # Mapping specifies same earliest-end logic for termEndDate.
-    term_end = assignment_end
+    # Mapping gives the same earliest-end logic for termEndDate.
+    term_end = (
+        assignment_end
+    )
 
 
     return {
@@ -1547,6 +1970,7 @@ def derive_assignment_dates(
         "reason": None,
 
         "inputs": {
+
             "DateEntréePoste":
                 source_row.get(
                     "DateEntréePoste"
@@ -1571,6 +1995,11 @@ def derive_assignment_dates(
                 period[
                     "history_rows"
                 ],
+
+            **period.get(
+                "inputs",
+                {},
+            ),
         },
     }
 
@@ -1596,12 +2025,12 @@ def build_rule_result(
     unresolved_reason=None,
 ):
     """
-    Build one standardized deterministic rule result.
+    Create standardized deterministic business-rule result.
     """
 
-    # --------------------------------------------------------
-    # RULE COULD NOT BE RESOLVED
-    # --------------------------------------------------------
+    # ========================================================
+    # UNRESOLVED
+    # ========================================================
 
     if not resolved:
 
@@ -1663,9 +2092,9 @@ def build_rule_result(
         }
 
 
-    # --------------------------------------------------------
-    # COMPARE EXPECTATION TO DESTINATION
-    # --------------------------------------------------------
+    # ========================================================
+    # COMPARE
+    # ========================================================
 
     equal = rule_values_equal(
 
@@ -1679,6 +2108,10 @@ def build_rule_result(
             destination_normalized_value,
     )
 
+
+    # ========================================================
+    # MATCH
+    # ========================================================
 
     if equal:
 
@@ -1697,6 +2130,10 @@ def build_rule_result(
             f"{display_value(expected_value)}."
         )
 
+
+    # ========================================================
+    # DISCREPANCY
+    # ========================================================
 
     else:
 
@@ -1773,7 +2210,7 @@ def build_rule_result(
 
 
 # ============================================================
-# MAIN RULE ENGINE
+# MAIN BUSINESS RULE ENGINE
 # ============================================================
 
 def evaluate_rule_based_fields(
@@ -1786,7 +2223,7 @@ def evaluate_rule_based_fields(
     assignment_matches_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Execute deterministic mapping rules for every safely
+    Evaluate deterministic business rules for every safely
     matched assignment.
     """
 
@@ -1810,17 +2247,20 @@ def evaluate_rule_based_fields(
             ]
         )
 
+
         assignment_type = (
             assignment[
                 "assignment_type"
             ]
         )
 
+
         source_index = int(
             assignment[
                 "source_row_index"
             ]
         )
+
 
         destination_index = int(
             assignment[
@@ -1835,11 +2275,13 @@ def evaluate_rule_based_fields(
             ]
         )
 
+
         destination_row = (
             destination_df.loc[
                 destination_index
             ]
         )
+
 
         raw_destination_row = (
             raw_destination_df.loc[
@@ -1852,8 +2294,10 @@ def evaluate_rule_based_fields(
         # EMAIL
         # ====================================================
 
-        email = build_expected_email(
-            source_row
+        email = (
+            build_expected_email(
+                source_row
+            )
         )
 
 
@@ -1861,18 +2305,26 @@ def evaluate_rule_based_fields(
 
             build_rule_result(
 
-                employee_id,
-                assignment_type,
-                source_index,
-                destination_index,
+                employee_id=
+                    employee_id,
 
-                mapping_row=4,
+                assignment_type=
+                    assignment_type,
 
-                rule_id="RULE_EMAIL",
+                source_row_index=
+                    source_index,
 
-                rule_name=(
-                    "Construction adresse courriel"
-                ),
+                destination_row_index=
+                    destination_index,
+
+                mapping_row=
+                    4,
+
+                rule_id=
+                    "RULE_EMAIL",
+
+                rule_name=
+                    "Construction adresse courriel",
 
                 destination_field=
                     "contactEmail",
@@ -1907,6 +2359,7 @@ def evaluate_rule_based_fields(
                         "reason"
                     ],
             )
+
         )
 
 
@@ -1925,18 +2378,26 @@ def evaluate_rule_based_fields(
 
             build_rule_result(
 
-                employee_id,
-                assignment_type,
-                source_index,
-                destination_index,
+                employee_id=
+                    employee_id,
 
-                mapping_row=12,
+                assignment_type=
+                    assignment_type,
 
-                rule_id="RULE_DIVISION_NAME",
+                source_row_index=
+                    source_index,
 
-                rule_name=(
-                    "Concaténation unité administrative"
-                ),
+                destination_row_index=
+                    destination_index,
+
+                mapping_row=
+                    12,
+
+                rule_id=
+                    "RULE_DIVISION_NAME",
+
+                rule_name=
+                    "Concaténation unité administrative",
 
                 destination_field=
                     "divisionName",
@@ -1971,6 +2432,7 @@ def evaluate_rule_based_fields(
                         "reason"
                     ],
             )
+
         )
 
 
@@ -1989,18 +2451,26 @@ def evaluate_rule_based_fields(
 
             build_rule_result(
 
-                employee_id,
-                assignment_type,
-                source_index,
-                destination_index,
+                employee_id=
+                    employee_id,
 
-                mapping_row=15,
+                assignment_type=
+                    assignment_type,
 
-                rule_id="RULE_POSITION_NAME",
+                source_row_index=
+                    source_index,
 
-                rule_name=(
-                    "Concaténation emploi"
-                ),
+                destination_row_index=
+                    destination_index,
+
+                mapping_row=
+                    15,
+
+                rule_id=
+                    "RULE_POSITION_NAME",
+
+                rule_name=
+                    "Concaténation emploi",
 
                 destination_field=
                     "positionName",
@@ -2035,6 +2505,7 @@ def evaluate_rule_based_fields(
                         "reason"
                     ],
             )
+
         )
 
 
@@ -2042,26 +2513,22 @@ def evaluate_rule_based_fields(
         # EMPLOYMENT STATUS
         # ====================================================
 
-        status = derive_employment_status(
+        status = (
+            derive_employment_status(
 
-            source_row=
-                source_row,
+                source_row=
+                    source_row,
 
-            employment_rules_df=
-                employment_rules_df,
+                employment_rules_df=
+                    employment_rules_df,
 
-            employment_reasons_df=
-                employment_reasons_df,
+                employment_reasons_df=
+                    employment_reasons_df,
+            )
         )
 
 
-        for (
-            mapping_row,
-            rule_id,
-            rule_name,
-            destination_field,
-            expected_value,
-        ) in [
+        status_rules = [
 
             (
                 17,
@@ -2092,16 +2559,32 @@ def evaluate_rule_based_fields(
                     "detailedStatus"
                 ],
             ),
-        ]:
+        ]
+
+
+        for (
+            mapping_row,
+            rule_id,
+            rule_name,
+            destination_field,
+            expected_value,
+        ) in status_rules:
 
             results.append(
 
                 build_rule_result(
 
-                    employee_id,
-                    assignment_type,
-                    source_index,
-                    destination_index,
+                    employee_id=
+                        employee_id,
+
+                    assignment_type=
+                        assignment_type,
+
+                    source_row_index=
+                        source_index,
+
+                    destination_row_index=
+                        destination_index,
 
                     mapping_row=
                         mapping_row,
@@ -2143,6 +2626,7 @@ def evaluate_rule_based_fields(
                             "reason"
                         ],
                 )
+
             )
 
 
@@ -2150,8 +2634,10 @@ def evaluate_rule_based_fields(
         # CONTRACT TYPE
         # ====================================================
 
-        contract = derive_contract_type(
-            source_row
+        contract = (
+            derive_contract_type(
+                source_row
+            )
         )
 
 
@@ -2159,18 +2645,26 @@ def evaluate_rule_based_fields(
 
             build_rule_result(
 
-                employee_id,
-                assignment_type,
-                source_index,
-                destination_index,
+                employee_id=
+                    employee_id,
 
-                mapping_row=24,
+                assignment_type=
+                    assignment_type,
 
-                rule_id="RULE_CONTRACT_TYPE",
+                source_row_index=
+                    source_index,
 
-                rule_name=(
-                    "Type d'employé"
-                ),
+                destination_row_index=
+                    destination_index,
+
+                mapping_row=
+                    24,
+
+                rule_id=
+                    "RULE_CONTRACT_TYPE",
+
+                rule_name=
+                    "Type d'employé",
 
                 destination_field=
                     "contractTypeCode",
@@ -2205,6 +2699,7 @@ def evaluate_rule_based_fields(
                         "reason"
                     ],
             )
+
         )
 
 
@@ -2212,16 +2707,14 @@ def evaluate_rule_based_fields(
         # ASSIGNMENT FLAGS
         # ====================================================
 
-        flags = derive_assignment_flags(
-            source_row
+        flags = (
+            derive_assignment_flags(
+                source_row
+            )
         )
 
 
-        for (
-            destination_field,
-            expected_value,
-            rule_id,
-        ) in [
+        flag_rules = [
 
             (
                 "isPrimaryAssignment",
@@ -2238,25 +2731,39 @@ def evaluate_rule_based_fields(
                 ],
                 "RULE_TEMP_ASSIGNMENT",
             ),
-        ]:
+        ]
+
+
+        for (
+            destination_field,
+            expected_value,
+            rule_id,
+        ) in flag_rules:
 
             results.append(
 
                 build_rule_result(
 
-                    employee_id,
-                    assignment_type,
-                    source_index,
-                    destination_index,
+                    employee_id=
+                        employee_id,
 
-                    mapping_row=41,
+                    assignment_type=
+                        assignment_type,
+
+                    source_row_index=
+                        source_index,
+
+                    destination_row_index=
+                        destination_index,
+
+                    mapping_row=
+                        41,
 
                     rule_id=
                         rule_id,
 
-                    rule_name=(
-                        "Type d'affectation P/A/S"
-                    ),
+                    rule_name=
+                        "Type d'affectation P/A/S",
 
                     destination_field=
                         destination_field,
@@ -2289,29 +2796,27 @@ def evaluate_rule_based_fields(
                             "reason"
                         ],
                 )
+
             )
 
 
         # ====================================================
-        # ASSIGNMENT / TERM DATES
+        # ASSIGNMENT DATES
         # ====================================================
 
-        dates = derive_assignment_dates(
+        dates = (
+            derive_assignment_dates(
 
-            source_row=
-                source_row,
+                source_row=
+                    source_row,
 
-            job_details_df=
-                job_details_df,
+                job_details_df=
+                    job_details_df,
+            )
         )
 
 
-        for (
-            mapping_row,
-            rule_id,
-            rule_name,
-            destination_field,
-        ) in [
+        date_rules = [
 
             (
                 46,
@@ -2333,21 +2838,38 @@ def evaluate_rule_based_fields(
                 "Date d'effet du détail du poste",
                 "termEndDate",
             ),
-        ]:
+        ]
 
-            expected_value = dates[
-                destination_field
-            ]
+
+        for (
+            mapping_row,
+            rule_id,
+            rule_name,
+            destination_field,
+        ) in date_rules:
+
+            expected_value = (
+                dates[
+                    destination_field
+                ]
+            )
 
 
             results.append(
 
                 build_rule_result(
 
-                    employee_id,
-                    assignment_type,
-                    source_index,
-                    destination_index,
+                    employee_id=
+                        employee_id,
+
+                    assignment_type=
+                        assignment_type,
+
+                    source_row_index=
+                        source_index,
+
+                    destination_row_index=
+                        destination_index,
 
                     mapping_row=
                         mapping_row,
@@ -2389,6 +2911,7 @@ def evaluate_rule_based_fields(
                             "reason"
                         ],
                 )
+
             )
 
 
@@ -2398,14 +2921,14 @@ def evaluate_rule_based_fields(
 
 
 # ============================================================
-# PREVIEW RULE ENGINE
+# PREVIEW RULE RESULTS
 # ============================================================
 
 def preview_rule_based_results(
     rule_results_df: pd.DataFrame,
 ) -> None:
     """
-    Print deterministic business-rule results.
+    Display deterministic business-rule results.
     """
 
     print(
@@ -2436,6 +2959,10 @@ def preview_rule_based_results(
     )
 
 
+    # ========================================================
+    # STATUS COUNTS
+    # ========================================================
+
     print(
         "\nRULE COMPARISON STATUS"
     )
@@ -2445,21 +2972,30 @@ def preview_rule_based_results(
     )
 
 
-    for (
-        status,
-        count,
-    ) in (
+    status_counts = (
+
         rule_results_df[
             "comparison_status"
         ]
+
         .value_counts()
-        .items()
-    ):
+
+    )
+
+
+    for (
+        status,
+        count,
+    ) in status_counts.items():
 
         print(
             f"{status}: {count}"
         )
 
+
+    # ========================================================
+    # VERDICT COUNTS
+    # ========================================================
 
     print(
         "\nRULE VERDICTS"
@@ -2470,16 +3006,21 @@ def preview_rule_based_results(
     )
 
 
-    for (
-        verdict,
-        count,
-    ) in (
+    verdict_counts = (
+
         rule_results_df[
             "verdict"
         ]
+
         .value_counts()
-        .items()
-    ):
+
+    )
+
+
+    for (
+        verdict,
+        count,
+    ) in verdict_counts.items():
 
         print(
             f"{verdict}: {count}"
@@ -2487,13 +3028,17 @@ def preview_rule_based_results(
 
 
     # ========================================================
-    # DETERMINISTIC ANOMALIES
+    # ANOMALIES
     # ========================================================
 
     anomalies = rule_results_df[
+
         rule_results_df[
             "verdict"
-        ] == "ANOMALIE"
+        ]
+        ==
+        "ANOMALIE"
+
     ]
 
 
@@ -2525,7 +3070,9 @@ def preview_rule_based_results(
                     "expected_value",
                     "destination_normalized_value",
                 ]
-            ].to_string(
+            ]
+
+            .to_string(
                 index=False
             )
 
@@ -2533,13 +3080,17 @@ def preview_rule_based_results(
 
 
     # ========================================================
-    # UNRESOLVED RULES
+    # UNRESOLVED
     # ========================================================
 
     unresolved = rule_results_df[
+
         rule_results_df[
             "verdict"
-        ] == "A_INVESTIGUER"
+        ]
+        ==
+        "A_INVESTIGUER"
+
     ]
 
 
@@ -2570,7 +3121,9 @@ def preview_rule_based_results(
                     "destination_field",
                     "explanation",
                 ]
-            ].to_string(
+            ]
+
+            .to_string(
                 index=False
             )
 

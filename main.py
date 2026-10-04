@@ -1,52 +1,37 @@
 # ============================================================
 # CORROBORIA
-# PERSON 1 - DATA + RULE ENGINE
+# MAIN PIPELINE
 # ============================================================
 #
-# CURRENT STATUS
-#
 # STEP 1
-#   ✅ Load files
-#   ✅ Validate required files
-#   ✅ Repair malformed job-details workbook
+#   Load and validate files
 #
 # STEP 2
-#   ✅ Preserve raw data
-#   ✅ Normalize System A
-#   ✅ Normalize System B
-#   ✅ Normalize job details
-#   ✅ Normalize employment reasons
+#   Preserve raw data and normalize datasets
 #
 # STEP 3
-#   ✅ Parse Mapping.xlsx
-#   ✅ Classify mapping rows
-#   ✅ Parse supporting rule tables
-#   ✅ Validate direct mappings
-#   ✅ Display full business-rule instructions
+#   Parse mapping and business-rule instructions
 #
 # STEP 4
-#   ✅ Match employees
+#   Match employees
 #
 # STEP 5
-#   ✅ Match assignments conservatively
+#   Match assignments conservatively
 #
 # STEP 6
-#   ✅ Compare DIRECT mapped fields
-#   ✅ Distinguish exact / normalized / discrepant values
+#   Compare direct mappings
 #
 # STEP 7
-#   ✅ Execute deterministic business rules
-#   ✅ Derive expected destination values
-#   ✅ Produce deterministic verdicts
+#   Apply deterministic business rules
 #
-# NEXT
+# STEP 8
+#   Diagnostic validation
 #
-#   ⬜ Combine direct + rule-based results
-#   ⬜ Handle unmatched assignments
-#   ⬜ Handle ambiguous assignment groups
-#   ⬜ AI analysis for unresolved cases
-#   ⬜ Priority / confidence
-#   ⬜ Final exportable report
+# STEP 9
+#   Build unified corroboration report
+#   Build investigation report
+#   Build AI queue
+#   Export CSV / Excel reports
 #
 # ============================================================
 
@@ -102,14 +87,36 @@ from corroboria.business_rules import (
     preview_rule_based_results,
 )
 
+from corroboria.final_report import (
+    build_ai_queue,
+    build_final_report,
+    build_investigation_report,
+    export_reports,
+    preview_final_report,
+)
+
 
 # ============================================================
 # PROJECT PATHS
 # ============================================================
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(
+    __file__
+).resolve().parent
 
-DATA_DIR = BASE_DIR / "data"
+
+DATA_DIR = (
+    BASE_DIR
+    /
+    "data"
+)
+
+
+OUTPUT_DIR = (
+    BASE_DIR
+    /
+    "output"
+)
 
 
 # ============================================================
@@ -119,19 +126,29 @@ DATA_DIR = BASE_DIR / "data"
 FILES = {
 
     "source":
-        DATA_DIR / "Employe_Source_Anonymise_VF.xlsx",
+        DATA_DIR
+        /
+        "Employe_Source_Anonymise_VF.xlsx",
 
     "destination":
-        DATA_DIR / "Employe_Destination_Anonymise_VF.xlsx",
+        DATA_DIR
+        /
+        "Employe_Destination_Anonymise_VF.xlsx",
 
     "mapping":
-        DATA_DIR / "Mapping.xlsx",
+        DATA_DIR
+        /
+        "Mapping.xlsx",
 
     "job_details":
-        DATA_DIR / "détail_du_poste.xlsx",
+        DATA_DIR
+        /
+        "détail_du_poste.xlsx",
 
     "employment_reasons":
-        DATA_DIR / "Motif de la situation d'emploi.xlsx",
+        DATA_DIR
+        /
+        "Motif de la situation d'emploi.xlsx",
 }
 
 
@@ -142,7 +159,7 @@ FILES = {
 
 def check_files_exist() -> None:
     """
-    Ensure that every required input file exists.
+    Ensure that every required challenge file exists.
     """
 
     missing_files = []
@@ -161,7 +178,10 @@ def check_files_exist() -> None:
 
         raise FileNotFoundError(
             "The following required files are missing:\n"
-            + "\n".join(missing_files)
+            +
+            "\n".join(
+                missing_files
+            )
         )
 
 
@@ -174,7 +194,7 @@ def load_excel_file(
     path: Path
 ) -> dict[str, pd.DataFrame]:
     """
-    Load every worksheet from an Excel workbook.
+    Load all worksheets from an Excel workbook.
     """
 
     return pd.read_excel(
@@ -194,17 +214,21 @@ def fix_comma_separated_sheet(
     df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Repair a worksheet containing CSV-style data inside
-    one Excel column.
+    Repair a worksheet containing comma-separated data
+    inside one Excel column.
     """
 
-    if len(df.columns) != 1:
+    if len(
+        df.columns
+    ) != 1:
 
         return df
 
 
     column_name = str(
-        df.columns[0]
+        df.columns[
+            0
+        ]
     )
 
 
@@ -218,16 +242,25 @@ def fix_comma_separated_sheet(
     ]
 
 
-    for value in df.iloc[:, 0]:
+    for value in df.iloc[
+        :,
+        0
+    ]:
 
-        if pd.isna(value):
+        if pd.isna(
+            value
+        ):
 
-            rows.append("")
+            rows.append(
+                ""
+            )
 
         else:
 
             rows.append(
-                str(value)
+                str(
+                    value
+                )
             )
 
 
@@ -237,7 +270,9 @@ def fix_comma_separated_sheet(
 
 
     corrected_df = pd.read_csv(
-        StringIO(csv_text),
+        StringIO(
+            csv_text
+        ),
         sep=",",
         dtype=object,
     )
@@ -253,7 +288,7 @@ def fix_comma_separated_sheet(
 
 def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
     """
-    Load all challenge workbooks.
+    Load all CorroborIA challenge workbooks.
     """
 
     check_files_exist()
@@ -276,21 +311,28 @@ def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
 
         # ----------------------------------------------------
         # SPECIAL CASE:
-        # repair malformed job-details workbook.
+        # Repair malformed job-details workbook
         # ----------------------------------------------------
 
         if name == "job_details":
 
-            for sheet_name, df in sheets.items():
+            for (
+                sheet_name,
+                df,
+            ) in sheets.items():
 
-                sheets[sheet_name] = (
+                sheets[
+                    sheet_name
+                ] = (
                     fix_comma_separated_sheet(
                         df
                     )
                 )
 
 
-        workbooks[name] = sheets
+        workbooks[
+            name
+        ] = sheets
 
 
     return workbooks
@@ -309,7 +351,9 @@ def inspect_workbooks(
     """
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -321,14 +365,20 @@ def inspect_workbooks(
     )
 
 
-    for workbook_name, sheets in workbooks.items():
+    for (
+        workbook_name,
+        sheets,
+    ) in workbooks.items():
 
         print(
             f"\n[{workbook_name.upper()}]"
         )
 
 
-        for sheet_name, df in sheets.items():
+        for (
+            sheet_name,
+            df,
+        ) in sheets.items():
 
             print(
                 f"\n  Sheet: {sheet_name}"
@@ -438,12 +488,15 @@ def normalize_source_data(
     Normalize System A values.
     """
 
-    df = source_df.copy()
+    df = (
+        source_df
+        .copy()
+    )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # IDENTIFIERS / CODES
-    # --------------------------------------------------------
+    # ========================================================
 
     identifier_columns = [
         "Matricule",
@@ -466,17 +519,21 @@ def normalize_source_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_identifier
                 )
             )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # TEXT
-    # --------------------------------------------------------
+    # ========================================================
 
     text_columns = [
         "NomFamille",
@@ -497,17 +554,21 @@ def normalize_source_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_text
                 )
             )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # DATES
-    # --------------------------------------------------------
+    # ========================================================
 
     date_columns = [
         "DateEmbaucheRécente",
@@ -522,17 +583,21 @@ def normalize_source_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_date
                 )
             )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # BOOLEANS
-    # --------------------------------------------------------
+    # ========================================================
 
     boolean_columns = [
         "EstPermanent",
@@ -544,17 +609,21 @@ def normalize_source_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_boolean
                 )
             )
 
 
-    # --------------------------------------------------------
-    # NUMERIC VALUES
-    # --------------------------------------------------------
+    # ========================================================
+    # NUMBERS
+    # ========================================================
 
     numeric_columns = [
         "HeuresNormeHebdo",
@@ -566,8 +635,12 @@ def normalize_source_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_number
                 )
@@ -589,12 +662,15 @@ def normalize_destination_data(
     Normalize System B values.
     """
 
-    df = destination_df.copy()
+    df = (
+        destination_df
+        .copy()
+    )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # IDENTIFIERS / CODES
-    # --------------------------------------------------------
+    # ========================================================
 
     identifier_columns = [
         "personId",
@@ -614,17 +690,21 @@ def normalize_destination_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_identifier
                 )
             )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # TEXT
-    # --------------------------------------------------------
+    # ========================================================
 
     text_columns = [
         "givenName",
@@ -643,17 +723,21 @@ def normalize_destination_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_text
                 )
             )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # DATES
-    # --------------------------------------------------------
+    # ========================================================
 
     date_columns = [
         "onboardDate",
@@ -669,17 +753,21 @@ def normalize_destination_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_date
                 )
             )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # BOOLEANS
-    # --------------------------------------------------------
+    # ========================================================
 
     boolean_columns = [
         "isPrimaryAssignment",
@@ -691,17 +779,21 @@ def normalize_destination_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_boolean
                 )
             )
 
 
-    # --------------------------------------------------------
-    # NUMERIC VALUES
-    # --------------------------------------------------------
+    # ========================================================
+    # NUMBERS
+    # ========================================================
 
     numeric_columns = [
         "wageOverrideAmount",
@@ -715,8 +807,12 @@ def normalize_destination_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_number
                 )
@@ -735,10 +831,13 @@ def normalize_job_details_data(
     job_details_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Normalize job-detail lookup/history.
+    Normalize job-detail history.
     """
 
-    df = job_details_df.copy()
+    df = (
+        job_details_df
+        .copy()
+    )
 
 
     identifier_columns = [
@@ -756,8 +855,12 @@ def normalize_job_details_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_identifier
                 )
@@ -789,8 +892,12 @@ def normalize_job_details_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_number
                 )
@@ -812,7 +919,10 @@ def normalize_employment_reasons_data(
     Normalize employment-reason lookup.
     """
 
-    df = employment_reasons_df.copy()
+    df = (
+        employment_reasons_df
+        .copy()
+    )
 
 
     identifier_columns = [
@@ -826,8 +936,12 @@ def normalize_employment_reasons_data(
 
         if column in df.columns:
 
-            df[column] = (
-                df[column]
+            df[
+                column
+            ] = (
+                df[
+                    column
+                ]
                 .apply(
                     normalize_identifier
                 )
@@ -849,11 +963,13 @@ def print_normalization_example(
     columns: list[str],
 ) -> None:
     """
-    Display original and normalized values.
+    Display raw vs normalized values.
     """
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -874,16 +990,28 @@ def print_normalization_example(
         return
 
 
-    raw_row = raw_df.iloc[0]
+    raw_row = (
+        raw_df
+        .iloc[
+            0
+        ]
+    )
 
-    normalized_row = normalized_df.iloc[0]
+
+    normalized_row = (
+        normalized_df
+        .iloc[
+            0
+        ]
+    )
 
 
     for column in columns:
 
         if (
             column in raw_df.columns
-            and column in normalized_df.columns
+            and
+            column in normalized_df.columns
         ):
 
             print(
@@ -911,15 +1039,17 @@ def preview_normalized_data(
     employment_reasons_df: pd.DataFrame,
 ) -> None:
     """
-    Display normalized dataset samples.
+    Preview normalized datasets.
     """
 
-    # --------------------------------------------------------
-    # SYSTEM A
-    # --------------------------------------------------------
+    # ========================================================
+    # SOURCE
+    # ========================================================
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -931,16 +1061,20 @@ def preview_normalized_data(
     )
 
     print(
-        source_df.head(5)
+        source_df.head(
+            5
+        )
     )
 
 
-    # --------------------------------------------------------
-    # SYSTEM B
-    # --------------------------------------------------------
+    # ========================================================
+    # DESTINATION
+    # ========================================================
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -972,25 +1106,35 @@ def preview_normalized_data(
 
 
     destination_preview_columns = [
+
         column
-        for column in destination_preview_columns
-        if column in destination_df.columns
+
+        for column
+        in destination_preview_columns
+
+        if column
+        in destination_df.columns
+
     ]
 
 
     print(
         destination_df[
             destination_preview_columns
-        ].head(5)
+        ].head(
+            5
+        )
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # JOB DETAILS
-    # --------------------------------------------------------
+    # ========================================================
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -1002,16 +1146,20 @@ def preview_normalized_data(
     )
 
     print(
-        job_details_df.head(5)
+        job_details_df.head(
+            5
+        )
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # EMPLOYMENT REASONS
-    # --------------------------------------------------------
+    # ========================================================
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -1023,24 +1171,28 @@ def preview_normalized_data(
     )
 
     print(
-        employment_reasons_df.head(5)
+        employment_reasons_df.head(
+            5
+        )
     )
 
 
 # ============================================================
 # STEP 3G
-# PRINT FULL BUSINESS RULE DETAILS
+# FULL BUSINESS RULE DETAILS
 # ============================================================
 
 def preview_full_rule_details(
     parsed_mapping_df: pd.DataFrame
 ) -> None:
     """
-    Display full mapping rules before executing them.
+    Display full rule text from Mapping.xlsx.
     """
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -1104,6 +1256,398 @@ def preview_full_rule_details(
 
 
 # ============================================================
+# STEP 8
+# BUSINESS RULE DEBUG DATA
+# ============================================================
+
+def preview_rule_debug_data(
+    source_df: pd.DataFrame,
+    raw_job_details_df: pd.DataFrame,
+    job_details_df: pd.DataFrame,
+    destination_df: pd.DataFrame,
+    assignment_matches_df: pd.DataFrame,
+) -> None:
+    """
+    Diagnostic output used to validate rule assumptions.
+    """
+
+    print(
+        "\n"
+        +
+        "=" * 70
+    )
+
+    print(
+        "CORROBORIA - BUSINESS RULE DEBUG DATA"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    safe_matches = assignment_matches_df[
+
+        assignment_matches_df[
+            "assignment_match_status"
+        ]
+        ==
+        "MATCHED"
+
+    ].copy()
+
+
+    # ========================================================
+    # POSITION + EMAIL
+    # ========================================================
+
+    print(
+        "\nPOSITION / EMAIL DIAGNOSTIC"
+    )
+
+    print(
+        "-" * 70
+    )
+
+
+    debug_rows = []
+
+
+    for _, match in safe_matches.iterrows():
+
+        source_index = int(
+            match[
+                "source_row_index"
+            ]
+        )
+
+
+        destination_index = int(
+            match[
+                "destination_row_index"
+            ]
+        )
+
+
+        source_row = (
+            source_df.loc[
+                source_index
+            ]
+        )
+
+
+        destination_row = (
+            destination_df.loc[
+                destination_index
+            ]
+        )
+
+
+        debug_rows.append(
+            {
+                "employee_id":
+                    match[
+                        "employee_id"
+                    ],
+
+                "source_index":
+                    source_index,
+
+                "destination_index":
+                    destination_index,
+
+                "CodePoste":
+                    source_row.get(
+                        "CodePoste"
+                    ),
+
+                "IntituléPoste":
+                    source_row.get(
+                        "IntituléPoste"
+                    ),
+
+                "CodeEmploi":
+                    source_row.get(
+                        "CodeEmploi"
+                    ),
+
+                "IntituléEmploi":
+                    source_row.get(
+                        "IntituléEmploi"
+                    ),
+
+                "positionId":
+                    destination_row.get(
+                        "positionId"
+                    ),
+
+                "positionCode":
+                    destination_row.get(
+                        "positionCode"
+                    ),
+
+                "positionName":
+                    destination_row.get(
+                        "positionName"
+                    ),
+
+                "PrénomUsuel":
+                    source_row.get(
+                        "PrénomUsuel"
+                    ),
+
+                "NomFamille":
+                    source_row.get(
+                        "NomFamille"
+                    ),
+
+                "Matricule":
+                    source_row.get(
+                        "Matricule"
+                    ),
+
+                "contactEmail":
+                    destination_row.get(
+                        "contactEmail"
+                    ),
+            }
+        )
+
+
+    debug_df = pd.DataFrame(
+        debug_rows
+    )
+
+
+    if debug_df.empty:
+
+        print(
+            "No deterministic assignment matches."
+        )
+
+    else:
+
+        print(
+            debug_df.to_string(
+                index=False
+            )
+        )
+
+
+    # ========================================================
+    # JOB DETAIL DATE DIAGNOSTIC
+    # ========================================================
+
+    print(
+        "\nJOB DETAIL DATE DIAGNOSTIC"
+    )
+
+    print(
+        "-" * 70
+    )
+
+
+    required_columns = [
+        "IdentifiantPoste",
+        "IdentifiantEmploi",
+        "CodeDirectionAffectée",
+        "DateEffetAffectation",
+    ]
+
+
+    missing_columns = [
+
+        column
+
+        for column
+        in required_columns
+
+        if column
+        not in job_details_df.columns
+
+    ]
+
+
+    if missing_columns:
+
+        print(
+            "Cannot display job-detail date diagnostic."
+        )
+
+        print(
+            "Missing columns:"
+        )
+
+
+        for column in missing_columns:
+
+            print(
+                f"  - {column}"
+            )
+
+
+    else:
+
+        date_debug_df = pd.DataFrame(
+            {
+                "row_index":
+                    job_details_df.index,
+
+                "position":
+                    job_details_df[
+                        "IdentifiantPoste"
+                    ],
+
+                "employment":
+                    job_details_df[
+                        "IdentifiantEmploi"
+                    ],
+
+                "direction":
+                    job_details_df[
+                        "CodeDirectionAffectée"
+                    ],
+
+                "raw_date":
+                    raw_job_details_df[
+                        "DateEffetAffectation"
+                    ],
+
+                "current_normalized_date":
+                    job_details_df[
+                        "DateEffetAffectation"
+                    ],
+            }
+        )
+
+
+        print(
+            date_debug_df.head(
+                40
+            ).to_string(
+                index=False
+            )
+        )
+
+
+    # ========================================================
+    # MATCHED JOB HISTORIES
+    # ========================================================
+
+    print(
+        "\nJOB HISTORY USED BY MATCHED ASSIGNMENTS"
+    )
+
+    print(
+        "-" * 70
+    )
+
+
+    matched_positions = set()
+
+
+    for _, match in safe_matches.iterrows():
+
+        source_index = int(
+            match[
+                "source_row_index"
+            ]
+        )
+
+
+        source_row = (
+            source_df.loc[
+                source_index
+            ]
+        )
+
+
+        position = source_row.get(
+            "CodePoste"
+        )
+
+
+        if position is not None:
+
+            matched_positions.add(
+                str(
+                    position
+                )
+            )
+
+
+    history_rows = []
+
+
+    for index, row in job_details_df.iterrows():
+
+        position = str(
+            row.get(
+                "IdentifiantPoste"
+            )
+        )
+
+
+        if position not in matched_positions:
+
+            continue
+
+
+        history_rows.append(
+            {
+                "job_detail_index":
+                    index,
+
+                "position":
+                    row.get(
+                        "IdentifiantPoste"
+                    ),
+
+                "employment":
+                    row.get(
+                        "IdentifiantEmploi"
+                    ),
+
+                "direction":
+                    row.get(
+                        "CodeDirectionAffectée"
+                    ),
+
+                "raw_date":
+                    raw_job_details_df.loc[
+                        index,
+                        "DateEffetAffectation"
+                    ],
+
+                "current_normalized_date":
+                    row.get(
+                        "DateEffetAffectation"
+                    ),
+            }
+        )
+
+
+    history_df = pd.DataFrame(
+        history_rows
+    )
+
+
+    if history_df.empty:
+
+        print(
+            "No matching job-detail history found."
+        )
+
+    else:
+
+        print(
+            history_df.to_string(
+                index=False
+            )
+        )
+
+
+# ============================================================
 # MAIN PROGRAM
 # ============================================================
 
@@ -1114,12 +1658,10 @@ if __name__ == "__main__":
     # LOAD INPUT FILES
     # ========================================================
 
-    workbooks = load_all_data()
+    workbooks = (
+        load_all_data()
+    )
 
-
-    # ========================================================
-    # DISPLAY INPUT STRUCTURE
-    # ========================================================
 
     inspect_workbooks(
         workbooks
@@ -1131,8 +1673,10 @@ if __name__ == "__main__":
     # EXTRACT DATAFRAMES
     # ========================================================
 
-    dataframes = extract_dataframes(
-        workbooks
+    dataframes = (
+        extract_dataframes(
+            workbooks
+        )
     )
 
 
@@ -1170,38 +1714,29 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 2B
-    # NORMALIZE SYSTEM A
+    # NORMALIZATION
     # ========================================================
 
-    source_df = normalize_source_data(
-        raw_source_df
+    source_df = (
+        normalize_source_data(
+            raw_source_df
+        )
     )
 
 
-    # ========================================================
-    # STEP 2C
-    # NORMALIZE SYSTEM B
-    # ========================================================
-
-    destination_df = normalize_destination_data(
-        raw_destination_df
+    destination_df = (
+        normalize_destination_data(
+            raw_destination_df
+        )
     )
 
 
-    # ========================================================
-    # STEP 2D
-    # NORMALIZE JOB DETAILS
-    # ========================================================
-
-    job_details_df = normalize_job_details_data(
-        raw_job_details_df
+    job_details_df = (
+        normalize_job_details_data(
+            raw_job_details_df
+        )
     )
 
-
-    # ========================================================
-    # STEP 2E
-    # NORMALIZE EMPLOYMENT REASONS
-    # ========================================================
 
     employment_reasons_df = (
         normalize_employment_reasons_data(
@@ -1215,20 +1750,29 @@ if __name__ == "__main__":
     # ========================================================
 
     preview_normalized_data(
-        source_df=source_df,
-        destination_df=destination_df,
-        job_details_df=job_details_df,
-        employment_reasons_df=employment_reasons_df,
+
+        source_df=
+            source_df,
+
+        destination_df=
+            destination_df,
+
+        job_details_df=
+            job_details_df,
+
+        employment_reasons_df=
+            employment_reasons_df,
     )
 
 
     # ========================================================
-    # NORMALIZATION TRACE - SYSTEM A
+    # NORMALIZATION TRACE
     # ========================================================
 
     print_normalization_example(
 
-        dataset_name="SYSTEM A",
+        dataset_name=
+            "SYSTEM A",
 
         raw_df=
             raw_source_df,
@@ -1245,13 +1789,10 @@ if __name__ == "__main__":
     )
 
 
-    # ========================================================
-    # NORMALIZATION TRACE - SYSTEM B
-    # ========================================================
-
     print_normalization_example(
 
-        dataset_name="SYSTEM B",
+        dataset_name=
+            "SYSTEM B",
 
         raw_df=
             raw_destination_df,
@@ -1268,13 +1809,10 @@ if __name__ == "__main__":
     )
 
 
-    # ========================================================
-    # NORMALIZATION TRACE - JOB DETAILS
-    # ========================================================
-
     print_normalization_example(
 
-        dataset_name="JOB DETAILS",
+        dataset_name=
+            "JOB DETAILS",
 
         raw_df=
             raw_job_details_df,
@@ -1292,63 +1830,63 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 3A
-    # PARSE MAIN MAPPING
+    # PARSE MAPPING
     # ========================================================
 
-    parsed_mapping_df = parse_mapping_sheet(
-
-        dataframes[
-            "mapping"
-        ]
-
+    parsed_mapping_df = (
+        parse_mapping_sheet(
+            dataframes[
+                "mapping"
+            ]
+        )
     )
 
 
     # ========================================================
     # STEP 3B
-    # PARSE EMPLOYMENT STATUS RULES
+    # EMPLOYMENT STATUS RULES
     # ========================================================
 
-    employment_rules_df = parse_employment_rules(
-
-        dataframes[
-            "employment_rules"
-        ]
-
+    employment_rules_df = (
+        parse_employment_rules(
+            dataframes[
+                "employment_rules"
+            ]
+        )
     )
 
 
     # ========================================================
     # STEP 3C
-    # PARSE JOB DETAIL JOIN INSTRUCTIONS
+    # JOB JOIN DEFINITIONS
     # ========================================================
 
-    job_join_df = parse_join_sheet(
-
-        dataframes[
-            "job_join"
-        ]
-
+    job_join_df = (
+        parse_join_sheet(
+            dataframes[
+                "job_join"
+            ]
+        )
     )
 
 
     # ========================================================
     # STEP 3D
-    # PARSE EMPLOYMENT REASON JOIN INSTRUCTIONS
+    # EMPLOYMENT REASON JOIN DEFINITIONS
     # ========================================================
 
-    employment_reason_join_df = parse_join_sheet(
-
-        dataframes[
-            "employment_reason_join"
-        ]
-
+    employment_reason_join_df = (
+        parse_join_sheet(
+            dataframes[
+                "employment_reason_join"
+            ]
+        )
     )
 
 
     # ========================================================
     # STEP 3E
-    # VALIDATE DIRECT MAPPINGS
+    # VALIDATE DIRECT MAPPING
     # ========================================================
 
     direct_mapping_issues_df = (
@@ -1390,11 +1928,6 @@ if __name__ == "__main__":
     )
 
 
-    # ========================================================
-    # STEP 3G
-    # DISPLAY FULL RULE TEXT
-    # ========================================================
-
     preview_full_rule_details(
 
         parsed_mapping_df=
@@ -1404,41 +1937,40 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 4A
-    # FIND MISSING EMPLOYEE IDS
+    # MISSING EMPLOYEE IDS
     # ========================================================
 
     (
         source_missing_ids_df,
         destination_missing_ids_df,
-    ) = find_missing_employee_ids(
+    ) = (
+        find_missing_employee_ids(
 
-        source_df=
-            source_df,
+            source_df=
+                source_df,
 
-        destination_df=
-            destination_df,
+            destination_df=
+                destination_df,
+        )
     )
 
 
     # ========================================================
     # STEP 4B
-    # MATCH EMPLOYEES
+    # EMPLOYEE MATCHING
     # ========================================================
 
-    employee_matches_df = match_employees(
+    employee_matches_df = (
+        match_employees(
 
-        source_df=
-            source_df,
+            source_df=
+                source_df,
 
-        destination_df=
-            destination_df,
+            destination_df=
+                destination_df,
+        )
     )
 
-
-    # ========================================================
-    # STEP 4C
-    # DISPLAY EMPLOYEE MATCHING
-    # ========================================================
 
     preview_employee_matching(
 
@@ -1460,27 +1992,24 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 5A
-    # MATCH ASSIGNMENTS
+    # STEP 5
+    # ASSIGNMENT MATCHING
     # ========================================================
 
-    assignment_matches_df = match_assignments(
+    assignment_matches_df = (
+        match_assignments(
 
-        source_df=
-            source_df,
+            source_df=
+                source_df,
 
-        destination_df=
-            destination_df,
+            destination_df=
+                destination_df,
 
-        employee_matches_df=
-            employee_matches_df,
+            employee_matches_df=
+                employee_matches_df,
+        )
     )
 
-
-    # ========================================================
-    # STEP 5B
-    # DISPLAY ASSIGNMENT MATCHING
-    # ========================================================
 
     preview_assignment_matching(
 
@@ -1491,35 +2020,32 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 6A
-    # DIRECT FIELD CORROBORATION
+    # DIRECT COMPARISONS
     # ========================================================
 
-    comparison_df = compare_direct_mappings(
+    comparison_df = (
+        compare_direct_mappings(
 
-        raw_source_df=
-            raw_source_df,
+            raw_source_df=
+                raw_source_df,
 
-        raw_destination_df=
-            raw_destination_df,
+            raw_destination_df=
+                raw_destination_df,
 
-        source_df=
-            source_df,
+            source_df=
+                source_df,
 
-        destination_df=
-            destination_df,
+            destination_df=
+                destination_df,
 
-        parsed_mapping_df=
-            parsed_mapping_df,
+            parsed_mapping_df=
+                parsed_mapping_df,
 
-        assignment_matches_df=
-            assignment_matches_df,
+            assignment_matches_df=
+                assignment_matches_df,
+        )
     )
 
-
-    # ========================================================
-    # STEP 6B
-    # DISPLAY DIRECT COMPARISON RESULTS
-    # ========================================================
 
     preview_direct_comparisons(
 
@@ -1529,8 +2055,8 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 6C
-    # DIRECT COMPARISON SANITY CHECK
+    # STEP 6B
+    # DIRECT SANITY CHECK
     # ========================================================
 
     deterministic_match_count = len(
@@ -1539,7 +2065,9 @@ if __name__ == "__main__":
 
             assignment_matches_df[
                 "assignment_match_status"
-            ] == "MATCHED"
+            ]
+            ==
+            "MATCHED"
 
         ]
 
@@ -1552,7 +2080,9 @@ if __name__ == "__main__":
 
             parsed_mapping_df[
                 "row_type"
-            ] == "DIRECT"
+            ]
+            ==
+            "DIRECT"
 
         ]
 
@@ -1572,7 +2102,9 @@ if __name__ == "__main__":
 
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -1628,38 +2160,35 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 7A
-    # EXECUTE DETERMINISTIC BUSINESS RULES
+    # BUSINESS RULE ENGINE
     # ========================================================
 
-    rule_results_df = evaluate_rule_based_fields(
+    rule_results_df = (
+        evaluate_rule_based_fields(
 
-        raw_destination_df=
-            raw_destination_df,
+            raw_destination_df=
+                raw_destination_df,
 
-        source_df=
-            source_df,
+            source_df=
+                source_df,
 
-        destination_df=
-            destination_df,
+            destination_df=
+                destination_df,
 
-        job_details_df=
-            job_details_df,
+            job_details_df=
+                job_details_df,
 
-        employment_reasons_df=
-            employment_reasons_df,
+            employment_reasons_df=
+                employment_reasons_df,
 
-        employment_rules_df=
-            employment_rules_df,
+            employment_rules_df=
+                employment_rules_df,
 
-        assignment_matches_df=
-            assignment_matches_df,
+            assignment_matches_df=
+                assignment_matches_df,
+        )
     )
 
-
-    # ========================================================
-    # STEP 7B
-    # DISPLAY BUSINESS RULE RESULTS
-    # ========================================================
 
     preview_rule_based_results(
 
@@ -1669,28 +2198,8 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 7C
+    # STEP 7B
     # BUSINESS RULE SANITY CHECK
-    # ========================================================
-    #
-    # Rule output per deterministic assignment:
-    #
-    #   1 contactEmail
-    #   1 divisionName
-    #   1 positionName
-    #   3 employment-status fields
-    #   1 contractTypeCode
-    #   2 assignment flags
-    #   3 assignment / term dates
-    #
-    # TOTAL:
-    #
-    #   12 rule-based comparisons per matched assignment
-    #
-    # Current dataset:
-    #
-    #   20 × 12 = 240
-    #
     # ========================================================
 
     expected_rule_comparisons = (
@@ -1706,7 +2215,9 @@ if __name__ == "__main__":
 
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -1755,18 +2266,20 @@ if __name__ == "__main__":
     else:
 
         print(
-            "\nWARNING: Business-rule comparison count "
-            "does not match expected count."
+            "\nWARNING: Business-rule comparison count does "
+            "not match expected count."
         )
 
 
     # ========================================================
-    # STEP 7D
-    # RULE VERDICT COUNTS
+    # STEP 7C
+    # TEMPORARY DETERMINISTIC SUMMARY
     # ========================================================
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
@@ -1778,10 +2291,6 @@ if __name__ == "__main__":
     )
 
 
-    # --------------------------------------------------------
-    # DIRECT VERDICTS
-    # --------------------------------------------------------
-
     print(
         "\nDIRECT FIELD RESULTS"
     )
@@ -1791,24 +2300,21 @@ if __name__ == "__main__":
     )
 
 
-    direct_verdict_counts = (
+    for (
+        verdict,
+        count,
+    ) in (
         comparison_df[
             "verdict"
         ]
         .value_counts()
-    )
-
-
-    for verdict, count in direct_verdict_counts.items():
+        .items()
+    ):
 
         print(
             f"{verdict}: {count}"
         )
 
-
-    # --------------------------------------------------------
-    # RULE VERDICTS
-    # --------------------------------------------------------
 
     print(
         "\nRULE-BASED RESULTS"
@@ -1819,15 +2325,16 @@ if __name__ == "__main__":
     )
 
 
-    rule_verdict_counts = (
+    for (
+        verdict,
+        count,
+    ) in (
         rule_results_df[
             "verdict"
         ]
         .value_counts()
-    )
-
-
-    for verdict, count in rule_verdict_counts.items():
+        .items()
+    ):
 
         print(
             f"{verdict}: {count}"
@@ -1835,33 +2342,316 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # FINAL SUCCESS MESSAGE
+    # STEP 8
+    # OPTIONAL DIAGNOSTIC OUTPUT
+    # ========================================================
+
+    preview_rule_debug_data(
+
+        source_df=
+            source_df,
+
+        raw_job_details_df=
+            raw_job_details_df,
+
+        job_details_df=
+            job_details_df,
+
+        destination_df=
+            destination_df,
+
+        assignment_matches_df=
+            assignment_matches_df,
+    )
+
+
+    # ========================================================
+    # STEP 9A
+    # BUILD UNIFIED FINAL REPORT
+    # ========================================================
+
+    final_report_df = (
+        build_final_report(
+
+            comparison_df=
+                comparison_df,
+
+            rule_results_df=
+                rule_results_df,
+
+            assignment_matches_df=
+                assignment_matches_df,
+        )
+    )
+
+
+    # ========================================================
+    # STEP 9B
+    # BUILD INVESTIGATION VIEW
+    # ========================================================
+
+    investigation_df = (
+        build_investigation_report(
+
+            final_report_df=
+                final_report_df,
+        )
+    )
+
+
+    # ========================================================
+    # STEP 9C
+    # BUILD AI QUEUE
+    # ========================================================
+
+    ai_queue_df = (
+        build_ai_queue(
+
+            final_report_df=
+                final_report_df,
+        )
+    )
+
+
+    # ========================================================
+    # STEP 9D
+    # FINAL REPORT SANITY CHECK
+    # ========================================================
+
+    expected_report_rows = (
+        len(
+            comparison_df
+        )
+        +
+        len(
+            rule_results_df
+        )
+        +
+        len(
+            assignment_matches_df[
+                assignment_matches_df[
+                    "assignment_match_status"
+                ]
+                !=
+                "MATCHED"
+            ]
+        )
+    )
+
+
+    actual_report_rows = len(
+        final_report_df
+    )
+
+
+    print(
+        "\n"
+        +
+        "=" * 70
+    )
+
+    print(
+        "CORROBORIA - FINAL REPORT SANITY CHECK"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    print(
+        f"\nDirect comparison rows: "
+        f"{len(comparison_df)}"
+    )
+
+
+    print(
+        f"Business-rule rows: "
+        f"{len(rule_results_df)}"
+    )
+
+
+    structural_issue_count = len(
+
+        assignment_matches_df[
+
+            assignment_matches_df[
+                "assignment_match_status"
+            ]
+            !=
+            "MATCHED"
+
+        ]
+
+    )
+
+
+    print(
+        f"Structural issue rows: "
+        f"{structural_issue_count}"
+    )
+
+
+    print(
+        f"Expected unified report rows: "
+        f"{expected_report_rows}"
+    )
+
+
+    print(
+        f"Actual unified report rows: "
+        f"{actual_report_rows}"
+    )
+
+
+    if (
+        expected_report_rows
+        ==
+        actual_report_rows
+    ):
+
+        print(
+            "\nUnified report row count is correct."
+        )
+
+    else:
+
+        print(
+            "\nWARNING: Unified report row count does not "
+            "match expected count."
+        )
+
+
+    # ========================================================
+    # STEP 9E
+    # PREVIEW UNIFIED REPORT
+    # ========================================================
+
+    preview_final_report(
+
+        final_report_df=
+            final_report_df,
+
+        investigation_df=
+            investigation_df,
+
+        ai_queue_df=
+            ai_queue_df,
+    )
+
+
+    # ========================================================
+    # STEP 9F
+    # EXPORT REPORTS
+    # ========================================================
+
+    exported_files = (
+        export_reports(
+
+            final_report_df=
+                final_report_df,
+
+            investigation_df=
+                investigation_df,
+
+            ai_queue_df=
+                ai_queue_df,
+
+            output_dir=
+                OUTPUT_DIR,
+        )
+    )
+
+
+    # ========================================================
+    # DISPLAY EXPORT PATHS
     # ========================================================
 
     print(
-        "\n" + "=" * 70
+        "\n"
+        +
+        "=" * 70
     )
 
     print(
-        "CorroborIA loading, normalization, mapping, "
-        "employee matching, assignment matching, direct "
-        "corroboration and deterministic business-rule "
-        "evaluation completed successfully."
+        "CORROBORIA - EXPORTED REPORTS"
     )
+
+    print(
+        "=" * 70
+    )
+
+
+    for (
+        report_name,
+        report_path,
+    ) in exported_files.items():
+
+        print(
+            f"{report_name}: {report_path}"
+        )
+
+
+    # ========================================================
+    # FINAL STATUS
+    # ========================================================
+
+    print(
+        "\n"
+        +
+        "=" * 70
+    )
+
+    print(
+        "CORROBORIA - PIPELINE COMPLETE"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    print(
+        "\nCorroborIA deterministic corroboration "
+        "completed successfully."
+    )
+
+
+    print(
+        "Direct comparisons, business rules and "
+        "structural assignment issues were combined "
+        "into one unified report."
+    )
+
+
+    print(
+        "Conforming values, justified discrepancies, "
+        "anomalies and investigation cases are now "
+        "distinguished."
+    )
+
+
+    print(
+        "Only unresolved / ambiguous cases were placed "
+        "into the AI queue."
+    )
+
 
     print(
         "Raw and normalized values remain preserved "
         "for traceability."
     )
 
-    print(
-        "Ambiguous and unresolved cases have not yet "
-        "been processed by AI."
-    )
 
     print(
-        "AI has not been used yet."
+        "Reports were exported to the output directory."
     )
+
+
+    print(
+        "\nAI analysis has not yet been executed."
+    )
+
 
     print(
         "=" * 70

@@ -1,4 +1,5 @@
 pandas
 openpyxl
-scikit-learn
 numpy
+scikit-learn
+streamlit

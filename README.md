@@ -1,161 +1,125 @@
-CorroborIA
-CorroborIA is an intelligent reconciliation application built for the Loto-Québec Détection intelligente des écarts challenge.
-It compares employee data from:
-- System A - HR
-- System B - Time
-and determines whether each difference is:
+CorroborIA is a reconciliation application created for the Loto-Québec Détection intelligente des écarts challenge.
+It compares employee information from System A - HR and System B - Time and helps determine whether a difference is normal, justified, a real anomaly, or something that should be reviewed.
+
+
+
+After running the reconciliation, CorroborIA groups results into four categories:
 - Match
+  The information in both systems agrees.
+
 - Justified difference
+  The values look different, but after normalization they represent the same information.
+
 - Actual anomaly
+  The expected value is known, but System B contains a different value.
+
 - Needs review
-The goal is not simply to detect differences. CorroborIA explains whether a difference actually matters, why it exists, and what should be investigated.
-What the site does
-CorroborIA guides the user through the full reconciliation process.
-It can:
-- load the five approved challenge files;
-- normalize dates, numbers, booleans, identifiers and text;
-- match employees and assignments;
-- apply the supplied business rules;
-- detect direct mismatches;
-- recognize harmless representation differences;
-- detect missing assignments;
-- flag unresolved cases;
-- use local AI to assist ambiguous assignment matching;
-- prioritize unusual anomaly profiles;
-- identify systematic, recurrent and isolated discrepancy patterns;
-- show supporting evidence for every case;
-- collect reviewer feedback;
-- export the results and audit trail.
-The original source files remain unchanged.
-Using the application
-Launch the site with:
-py -m streamlit run app.py
-The sidebar allows the user to:
-- select the bundled challenge files or upload an approved file set;
-- switch between English and French;
-- switch between Light and Dark mode;
-- run the reconciliation.
-Overview
-After the reconciliation runs, the Overview tab shows the final result.
-For the supplied challenge dataset:
-Verdict	Count
-Match	406
-Justified difference	20
-Actual anomaly	55
-Needs review	21
-Total	502
+  The case cannot be resolved safely using deterministic rules alone.
 
 
-These counts represent field comparisons and structural assignment cases, not unique employees.
-The four verdicts
-Match
-The approved source and destination values agree.
-Justified difference
-The raw values look different, but normalization shows they represent the same information.
-Example:
-System A: 1995-02-09 00:00:00
-System B: 1995-02-09T00:00:00.000Z
-Normalized: 1995-02-09
-This avoids false anomalies caused by formatting differences.
-Actual anomaly
-CorroborIA can determine the expected value, but System B contains something different.
-Example:
-Expected weekly hours: 35
-System B weekly hours: 40
-Needs review
-The available evidence is not strong enough for a safe deterministic decision.
-This includes ambiguous assignment matches and known anonymization limitations.
-Review queue
-The Review queue is the main investigation workspace.
+How to use the site
+1. Choose the files
+In the sidebar, you can either:
+- use the bundled challenge files;
+- upload your own approved files.
+The application uses the source file, destination file, mapping file, job-detail file and employment-reason file.
+2. Run the reconciliation
+Click Run reconciliation.
+CorroborIA will process the files and display the results in the main dashboard.
+The original source files are not modified.
+Overview tab
+The Overview tab gives a quick summary of the reconciliation.
+It shows how many cases are:
+- matches;
+- justified differences;
+- actual anomalies;
+- still in need of review.
+This gives the user an immediate idea of how much of the data is correct and how much needs attention.
+Review Queue tab
+The Review Queue is where individual cases can be investigated.
 Cases can be filtered by:
 - verdict;
 - field;
 - priority;
 - rule.
-Selecting a case shows:
-- verdict;
-- decision method;
-- priority;
-- System A evidence;
-- System B evidence;
-- raw values;
-- normalized values;
-- expected values;
-- source and destination rows;
-- rule evidence;
-- AI information when applicable.
-Structural cases are also shown clearly. For example:
-SYSTEM A
-Present
-Assignment type: A
+When a case is selected, CorroborIA shows:
+- the employee;
+- the field being compared;
+- the final verdict;
+- the decision method;
+- the priority;
+- the System A value;
+- the System B value;
+- the normalized values;
+- the expected value when applicable;
+- the explanation for the result;
+- supporting information used to make the decision.
 
-SYSTEM B
-Missing
-Assignment type: A
-This makes missing whole assignments easy to understand.
-AI-assisted analysis
-AI is used as an assistance layer, not as a replacement for deterministic rules.
-The AI analysis tab contains three functions:
-1. Ambiguous assignment matching
-When deterministic rules cannot uniquely match multiple assignments, CorroborIA evaluates the possible one-to-one pairings.
-For the supplied challenge case, AI prefers:
-Source 21 → Destination 21
-Source 22 → Destination 19
-The deterministic verdict still remains Needs review until a reviewer confirms the proposal.
-2. Anomaly prioritization
-CorroborIA ranks employee anomaly profiles so investigators can focus on the most unusual cases first.
-Priority affects investigation order only. It does not change the deterministic verdict.
-3. Pattern analysis
-Discrepancies are categorized as:
+The goal is to make every result understandable without having to manually search through the original spreadsheets.
+Structural assignment cases
+CorroborIA can also detect when an entire assignment is missing.
+This makes it easy to see that the issue is not simply one incorrect field, but a missing assignment record.
+AI Analysis tab
+
+The AI Analysis tab is used for cases where extra analysis is useful.
+It includes:
+Assignment matching
+If multiple assignments could match each other, the AI suggests the most likely one-to-one pairing.
+The recommendation is shown to the user, but the case remains Needs review until it is confirmed.
+Prioritization
+
+CorroborIA also ranks employee anomaly profiles so that the most unusual cases can be investigated first.
+Pattern detection
+
+The site identifies whether a discrepancy appears to be:
 - Systematic
 - Recurrent
 - Isolated
-This helps distinguish a single employee problem from a system-wide transformation issue.
-AI validation
-The assignment-matching model was tested using leave-one-confirmed-match-out validation.
-Result:
-Confirmed pairs evaluated: 20
-Top-1 ranking accuracy: 20/20 (100.0%)
-Mean Reciprocal Rank: 1.000
-The sample is small, so this result applies to the supplied challenge dataset and should not be interpreted as universal production accuracy.
-The ambiguous secondary-assignment case is not used as validation ground truth.
-Governance and audit
-The Governance & audit tab provides:
-- reviewer feedback;
-- mapping evidence;
-- run-level audit information;
-- input-file fingerprints;
-- read-only confirmation;
-- AI configuration details.
-Reviewer feedback is stored separately and never overwrites the original deterministic result.
-CorroborIA also calculates SHA-256 fingerprints for the input files, making each run traceable to the exact files used.
+
+This helps show whether a problem affects one employee or appears across many records.
+Governance & Audit tab
+The Governance & Audit tab provides additional transparency.
+It allows the user to:
+- review the mapping used by the system;
+- see run-level audit information;
+- confirm that source files were treated as read-only;
+- view file fingerprints;
+- record reviewer feedback.
+Reviewer feedback is stored separately so that the original CorroborIA result is preserved.
+
+Language and theme
+The site can be displayed in:
+- English;
+- French.
+It also supports:
+- Light mode;
+- Dark mode.
+
+These settings only affect the interface and do not change the reconciliation results.
+
 Exports
-The application provides:
-- filtered CSV export;
-- full Excel report;
-- JSON run audit;
-- reviewer feedback CSV.
-The Excel report includes summary, investigation, mapping, matching, AI, and audit information.
-Quality assurance
-Run:
+CorroborIA allows users to download the results in several formats:
+- Filtered CSV for the current review list;
+- Excel report containing the full reconciliation results;
+- JSON audit file containing run information;
+- Reviewer feedback CSV.
+This makes it possible to continue the investigation outside the application.
+
+Running the application
+Install the required packages:
+py -m pip install -r requirements.txt
+Launch CorroborIA:
+py -m streamlit run app.py
+
+Quality check
+The project includes an automated QA check:
 py qa_check.py
 Current result:
-Bundled data.................. PASS
-Structural anomaly............ PASS
-AI outputs.................... PASS
-Export files.................. PASS
-Simulated file uploads........ PASS
-Bundled vs uploaded results... PASS
-
 ALL QA CHECKS PASSED
-Privacy
-All machine-learning analysis runs locally with scikit-learn.
-No challenge employee data are sent to an external AI provider.
-Core principle
-CorroborIA does not ask:
-Are these two raw values identical?
 
-It asks:
-Do they represent the same information, can the difference be explained by an approved business rule, or does it require investigation?
-
-That is what turns a raw comparison into an explainable and actionable reconciliation workflow.
+The validated result is:
+406 Match
+20 Justified difference
+55 Actual anomaly
+21 Needs review
+502 total

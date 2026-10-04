@@ -1,0 +1,21 @@
+﻿employee_id,anomaly_count,investigate_count,direct_anomaly_count,rule_anomaly_count,structural_anomaly_count,critical_count,high_priority_count,unique_anomaly_fields,mean_field_rarity,max_field_rarity,ai_anomaly_score,ai_priority,ai_explanation
+3712987,5,1,2,3,0,0,5,5,0.4800000000000001,0.8,1.0,ÉLEVÉE,Score IA=1.000. 2 écart(s) direct(s); plusieurs anomalies simultanées.
+1545850,3,1,0,2,1,1,2,3,0.31666666666666665,0.95,0.9968197659469824,CRITIQUE,Score IA=0.997. anomalie structurelle.
+7683990,4,2,2,2,0,0,4,4,0.4,0.8,0.7228588978658625,MOYENNE,Score IA=0.723. 2 écart(s) direct(s); plusieurs anomalies simultanées.
+2762457,3,1,0,3,0,0,3,3,0.26666666666666666,0.8,0.345051321342558,FAIBLE,Score IA=0.345. profil proche des anomalies récurrentes.
+4625374,3,1,0,3,0,0,3,3,0.26666666666666666,0.8,0.345051321342558,FAIBLE,Score IA=0.345. profil proche des anomalies récurrentes.
+7254364,3,1,0,3,0,0,3,3,0.26666666666666666,0.8,0.345051321342558,FAIBLE,Score IA=0.345. profil proche des anomalies récurrentes.
+3241002,3,1,1,2,0,0,3,3,0.3,0.9,0.2935404914079955,FAIBLE,Score IA=0.294. 1 écart(s) direct(s).
+6035643,3,1,1,2,0,0,3,3,0.3,0.9,0.2935404914079955,FAIBLE,Score IA=0.294. 1 écart(s) direct(s).
+2911996,4,1,2,2,0,0,4,4,0.4,0.8,0.2562094057764407,FAIBLE,Score IA=0.256. 2 écart(s) direct(s); plusieurs anomalies simultanées.
+4402456,4,1,2,2,0,0,4,4,0.4,0.8,0.2562094057764407,FAIBLE,Score IA=0.256. 2 écart(s) direct(s); plusieurs anomalies simultanées.
+2173396,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+2648214,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+2747515,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+4880692,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+6783031,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+7070325,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+7603160,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+8142123,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+8644330,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.
+9989151,2,1,0,2,0,0,2,2,0.0,0.0,0.0,FAIBLE,Score IA=0.000. profil proche des anomalies récurrentes.

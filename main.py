@@ -10,7 +10,7 @@
 #   Preserve raw data and normalize datasets
 #
 # STEP 3
-#   Parse mapping and business-rule instructions
+#   Parse mapping and supplied business rules
 #
 # STEP 4
 #   Match employees
@@ -29,9 +29,29 @@
 #
 # STEP 9
 #   Build unified corroboration report
-#   Build investigation report
+#   Build analyst investigation view
 #   Build AI queue
-#   Export CSV / Excel reports
+#   Export deterministic reports
+#
+# STEP 10
+#   Analyze ambiguous assignment matches with ML
+#   Prioritize anomaly profiles with ML
+#   Detect systematic discrepancy patterns
+#   Export AI results
+#
+#
+# IMPORTANT PRINCIPLE
+#
+# Deterministic rules remain authoritative.
+#
+# AI may:
+#   - analyze ambiguity
+#   - rank candidates
+#   - prioritize anomalies
+#   - identify patterns
+#   - generate useful explanations
+#
+# AI does NOT silently override deterministic verdicts.
 #
 # ============================================================
 
@@ -93,6 +113,14 @@ from corroboria.final_report import (
     build_investigation_report,
     export_reports,
     preview_final_report,
+)
+
+from corroboria.ai_analyzer import (
+    analyze_ambiguous_assignments,
+    export_ai_analysis,
+    preview_ai_analysis,
+    prioritize_anomalies,
+    summarize_anomaly_patterns,
 )
 
 
@@ -288,7 +316,7 @@ def fix_comma_separated_sheet(
 
 def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
     """
-    Load all CorroborIA challenge workbooks.
+    Load all challenge workbooks.
     """
 
     check_files_exist()
@@ -311,7 +339,7 @@ def load_all_data() -> dict[str, dict[str, pd.DataFrame]]:
 
         # ----------------------------------------------------
         # SPECIAL CASE:
-        # Repair malformed job-details workbook
+        # Repair malformed job-detail workbook
         # ----------------------------------------------------
 
         if name == "job_details":
@@ -495,7 +523,7 @@ def normalize_source_data(
 
 
     # ========================================================
-    # IDENTIFIERS / CODES
+    # IDENTIFIERS
     # ========================================================
 
     identifier_columns = [
@@ -669,7 +697,7 @@ def normalize_destination_data(
 
 
     # ========================================================
-    # IDENTIFIERS / CODES
+    # IDENTIFIERS
     # ========================================================
 
     identifier_columns = [
@@ -1268,7 +1296,8 @@ def preview_rule_debug_data(
     assignment_matches_df: pd.DataFrame,
 ) -> None:
     """
-    Diagnostic output used to validate rule assumptions.
+    Diagnostic output used to validate business-rule
+    assumptions.
     """
 
     print(
@@ -1669,7 +1698,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 2A
+    # STEP 2
     # EXTRACT DATAFRAMES
     # ========================================================
 
@@ -1713,7 +1742,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 2B
+    # STEP 2
     # NORMALIZATION
     # ========================================================
 
@@ -1746,7 +1775,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # DISPLAY NORMALIZED DATA
+    # PREVIEW NORMALIZED DATA
     # ========================================================
 
     preview_normalized_data(
@@ -1829,7 +1858,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 3A
+    # STEP 3
     # PARSE MAPPING
     # ========================================================
 
@@ -1842,11 +1871,6 @@ if __name__ == "__main__":
     )
 
 
-    # ========================================================
-    # STEP 3B
-    # EMPLOYMENT STATUS RULES
-    # ========================================================
-
     employment_rules_df = (
         parse_employment_rules(
             dataframes[
@@ -1855,11 +1879,6 @@ if __name__ == "__main__":
         )
     )
 
-
-    # ========================================================
-    # STEP 3C
-    # JOB JOIN DEFINITIONS
-    # ========================================================
 
     job_join_df = (
         parse_join_sheet(
@@ -1870,11 +1889,6 @@ if __name__ == "__main__":
     )
 
 
-    # ========================================================
-    # STEP 3D
-    # EMPLOYMENT REASON JOIN DEFINITIONS
-    # ========================================================
-
     employment_reason_join_df = (
         parse_join_sheet(
             dataframes[
@@ -1883,11 +1897,6 @@ if __name__ == "__main__":
         )
     )
 
-
-    # ========================================================
-    # STEP 3E
-    # VALIDATE DIRECT MAPPING
-    # ========================================================
 
     direct_mapping_issues_df = (
         validate_direct_mappings(
@@ -1903,11 +1912,6 @@ if __name__ == "__main__":
         )
     )
 
-
-    # ========================================================
-    # STEP 3F
-    # DISPLAY MAPPING ANALYSIS
-    # ========================================================
 
     preview_mapping_analysis(
 
@@ -1936,8 +1940,8 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 4A
-    # MISSING EMPLOYEE IDS
+    # STEP 4
+    # EMPLOYEE MATCHING
     # ========================================================
 
     (
@@ -1954,11 +1958,6 @@ if __name__ == "__main__":
         )
     )
 
-
-    # ========================================================
-    # STEP 4B
-    # EMPLOYEE MATCHING
-    # ========================================================
 
     employee_matches_df = (
         match_employees(
@@ -2019,7 +2018,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 6A
+    # STEP 6
     # DIRECT COMPARISONS
     # ========================================================
 
@@ -2055,7 +2054,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 6B
+    # STEP 6
     # DIRECT SANITY CHECK
     # ========================================================
 
@@ -2159,7 +2158,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 7A
+    # STEP 7
     # BUSINESS RULE ENGINE
     # ========================================================
 
@@ -2198,7 +2197,7 @@ if __name__ == "__main__":
 
 
     # ========================================================
-    # STEP 7B
+    # STEP 7
     # BUSINESS RULE SANITY CHECK
     # ========================================================
 
@@ -2266,14 +2265,14 @@ if __name__ == "__main__":
     else:
 
         print(
-            "\nWARNING: Business-rule comparison count does "
-            "not match expected count."
+            "\nWARNING: Business-rule comparison count "
+            "does not match expected count."
         )
 
 
     # ========================================================
-    # STEP 7C
-    # TEMPORARY DETERMINISTIC SUMMARY
+    # STEP 7
+    # CURRENT DETERMINISTIC SUMMARY
     # ========================================================
 
     print(
@@ -2343,7 +2342,7 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 8
-    # OPTIONAL DIAGNOSTIC OUTPUT
+    # DIAGNOSTIC OUTPUT
     # ========================================================
 
     preview_rule_debug_data(
@@ -2387,7 +2386,7 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 9B
-    # BUILD INVESTIGATION VIEW
+    # INVESTIGATION VIEW
     # ========================================================
 
     investigation_df = (
@@ -2401,7 +2400,7 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 9C
-    # BUILD AI QUEUE
+    # AI QUEUE
     # ========================================================
 
     ai_queue_df = (
@@ -2418,6 +2417,21 @@ if __name__ == "__main__":
     # FINAL REPORT SANITY CHECK
     # ========================================================
 
+    structural_issue_count = len(
+
+        assignment_matches_df[
+
+            assignment_matches_df[
+                "assignment_match_status"
+            ]
+            !=
+            "MATCHED"
+
+        ]
+
+    )
+
+
     expected_report_rows = (
         len(
             comparison_df
@@ -2427,15 +2441,7 @@ if __name__ == "__main__":
             rule_results_df
         )
         +
-        len(
-            assignment_matches_df[
-                assignment_matches_df[
-                    "assignment_match_status"
-                ]
-                !=
-                "MATCHED"
-            ]
-        )
+        structural_issue_count
     )
 
 
@@ -2468,21 +2474,6 @@ if __name__ == "__main__":
     print(
         f"Business-rule rows: "
         f"{len(rule_results_df)}"
-    )
-
-
-    structural_issue_count = len(
-
-        assignment_matches_df[
-
-            assignment_matches_df[
-                "assignment_match_status"
-            ]
-            !=
-            "MATCHED"
-
-        ]
-
     )
 
 
@@ -2524,7 +2515,7 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 9E
-    # PREVIEW UNIFIED REPORT
+    # PREVIEW FINAL REPORT
     # ========================================================
 
     preview_final_report(
@@ -2542,7 +2533,7 @@ if __name__ == "__main__":
 
     # ========================================================
     # STEP 9F
-    # EXPORT REPORTS
+    # EXPORT DETERMINISTIC REPORTS
     # ========================================================
 
     exported_files = (
@@ -2562,10 +2553,6 @@ if __name__ == "__main__":
         )
     )
 
-
-    # ========================================================
-    # DISPLAY EXPORT PATHS
-    # ========================================================
 
     print(
         "\n"
@@ -2593,6 +2580,184 @@ if __name__ == "__main__":
 
 
     # ========================================================
+    # STEP 10A
+    # AI ANALYSIS OF AMBIGUOUS ASSIGNMENTS
+    # ========================================================
+
+    ambiguous_ai_df = (
+        analyze_ambiguous_assignments(
+
+            source_df=
+                source_df,
+
+            destination_df=
+                destination_df,
+
+            assignment_matches_df=
+                assignment_matches_df,
+        )
+    )
+
+
+    # ========================================================
+    # STEP 10B
+    # AI PRIORITIZATION OF ANOMALIES
+    # ========================================================
+
+    ai_priority_df = (
+        prioritize_anomalies(
+
+            final_report_df=
+                final_report_df,
+        )
+    )
+
+
+    # ========================================================
+    # STEP 10C
+    # AI PATTERN ANALYSIS
+    # ========================================================
+
+    ai_pattern_df = (
+        summarize_anomaly_patterns(
+
+            final_report_df=
+                final_report_df,
+        )
+    )
+
+
+    # ========================================================
+    # STEP 10D
+    # AI SANITY CHECK
+    # ========================================================
+
+    print(
+        "\n"
+        +
+        "=" * 70
+    )
+
+    print(
+        "CORROBORIA - AI SANITY CHECK"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    ambiguous_group_count = len(
+
+        assignment_matches_df[
+
+            assignment_matches_df[
+                "assignment_match_status"
+            ]
+            ==
+            "AMBIGUOUS_ASSIGNMENT_MATCH"
+
+        ]
+
+    )
+
+
+    print(
+        f"\nAmbiguous assignment groups: "
+        f"{ambiguous_group_count}"
+    )
+
+
+    print(
+        f"AI candidate-pair rows: "
+        f"{len(ambiguous_ai_df)}"
+    )
+
+
+    print(
+        f"AI employee priority rows: "
+        f"{len(ai_priority_df)}"
+    )
+
+
+    print(
+        f"AI pattern rows: "
+        f"{len(ai_pattern_df)}"
+    )
+
+
+    # ========================================================
+    # STEP 10E
+    # PREVIEW AI ANALYSIS
+    # ========================================================
+
+    preview_ai_analysis(
+
+        ambiguous_df=
+            ambiguous_ai_df,
+
+        priority_df=
+            ai_priority_df,
+
+        pattern_df=
+            ai_pattern_df,
+    )
+
+
+    # ========================================================
+    # STEP 10F
+    # EXPORT AI ANALYSIS
+    # ========================================================
+
+    ai_exported_files = (
+        export_ai_analysis(
+
+            ambiguous_df=
+                ambiguous_ai_df,
+
+            priority_df=
+                ai_priority_df,
+
+            pattern_df=
+                ai_pattern_df,
+
+            excel_path=
+                exported_files[
+                    "excel"
+                ],
+
+            output_dir=
+                OUTPUT_DIR,
+        )
+    )
+
+
+    print(
+        "\n"
+        +
+        "=" * 70
+    )
+
+    print(
+        "CORROBORIA - AI OUTPUTS"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    for (
+        name,
+        path,
+    ) in ai_exported_files.items():
+
+        print(
+            f"{name}: {path}"
+        )
+
+
+    # ========================================================
     # FINAL STATUS
     # ========================================================
 
@@ -2612,44 +2777,53 @@ if __name__ == "__main__":
 
 
     print(
-        "\nCorroborIA deterministic corroboration "
-        "completed successfully."
+        "\nCorroborIA completed successfully."
     )
 
 
     print(
-        "Direct comparisons, business rules and "
-        "structural assignment issues were combined "
-        "into one unified report."
+        "The deterministic corroboration layer compared "
+        "direct fields, applied supplied business rules "
+        "and detected structural assignment issues."
     )
 
 
     print(
-        "Conforming values, justified discrepancies, "
-        "anomalies and investigation cases are now "
-        "distinguished."
+        "The unified report distinguishes CONFORME, "
+        "ECART_JUSTIFIE, ANOMALIE and A_INVESTIGUER."
     )
 
 
     print(
-        "Only unresolved / ambiguous cases were placed "
-        "into the AI queue."
+        "Known anonymization limitations remain visible "
+        "without being incorrectly sent to AI."
     )
 
 
     print(
-        "Raw and normalized values remain preserved "
-        "for traceability."
+        "The AI layer analyzed ambiguous assignment "
+        "candidates using known deterministic matches."
     )
 
 
     print(
-        "Reports were exported to the output directory."
+        "The AI layer also prioritized anomaly profiles "
+        "and detected recurring discrepancy patterns."
     )
 
 
     print(
-        "\nAI analysis has not yet been executed."
+        "Deterministic verdicts were not overridden by AI."
+    )
+
+
+    print(
+        "All reports were exported to the output directory."
+    )
+
+
+    print(
+        "\nAI analysis completed successfully."
     )
 
 

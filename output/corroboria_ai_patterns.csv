@@ -1,0 +1,10 @@
+﻿field,rule_id,verdict,decision_source,occurrences,affected_employees,employee_prevalence,pattern_type,ai_interpretation
+assignmentStartDate,RULE_ASSIGNMENT_START,ANOMALIE,RULE,20,20,1.0,SYSTEMATIQUE,"Écart observé sur une grande partie de la population. Vérifier en priorité une règle de transformation, une configuration globale ou une limite du jeu de données."
+contactEmail,RULE_EMAIL,A_INVESTIGUER,RULE_LIMITATION,20,20,1.0,SYSTEMATIQUE,"Écart observé sur une grande partie de la population. Vérifier en priorité une règle de transformation, une configuration globale ou une limite du jeu de données."
+positionName,RULE_POSITION_NAME,ANOMALIE,RULE,20,20,1.0,SYSTEMATIQUE,"Écart observé sur une grande partie de la population. Vérifier en priorité une règle de transformation, une configuration globale ou une limite du jeu de données."
+contractTypeCode,RULE_CONTRACT_TYPE,ANOMALIE,RULE,4,4,0.2,RECURRENT,Écart récurrent mais non généralisé. Rechercher une cause commune touchant un sous-ensemble d'employés.
+dailyHoursOverride,,ANOMALIE,DIRECT,4,4,0.2,RECURRENT,Écart récurrent mais non généralisé. Rechercher une cause commune touchant un sous-ensemble d'employés.
+weeklyHoursOverride,,ANOMALIE,DIRECT,4,4,0.2,RECURRENT,Écart récurrent mais non généralisé. Rechercher une cause commune touchant un sous-ensemble d'employés.
+siteName,,ANOMALIE,DIRECT,2,2,0.1,ISOLE,Écart relativement isolé. Une investigation individuelle est probablement plus pertinente.
+__ASSIGNMENT__,,ANOMALIE,STRUCTURAL,1,1,0.05,ISOLE,Écart relativement isolé. Une investigation individuelle est probablement plus pertinente.
+__ASSIGNMENT__,,A_INVESTIGUER,STRUCTURAL,1,1,0.05,ISOLE,Écart relativement isolé. Une investigation individuelle est probablement plus pertinente.
